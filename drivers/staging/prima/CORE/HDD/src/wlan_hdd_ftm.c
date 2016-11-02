@@ -474,6 +474,7 @@ typedef struct
     v_U16_t rxmode;
     v_U16_t chainSelect;
     ePhyChanBondState cbmode;
+    ePowerTempIndexSource powerIndex;
 
 } FTM_STATUS ;
 static FTM_STATUS ftm_status;
@@ -507,6 +508,7 @@ static void _ftm_status_init(void)
     ftm_status.rxmode = RXMODE_ENABLE_ALL; /* macStart() enables all receive pkt types */
     ftm_status.chainSelect = FTM_CHAIN_SEL_R0_T0_ON;
     ftm_status.cbmode = 0 ; //none channel bonding
+    ftm_status.powerIndex = FIXED_POWER_DBM;
 
     return;
 }
@@ -1581,6 +1583,7 @@ nl_srv_exit(pHddCtx->ptt_pid);
 #else
 nl_srv_exit();
 #endif /* WLAN_KD_READY_NOTIFIER */
+ptt_sock_deactivate_svc(pHddCtx);
 err_ftm_register_wext_close:
 hdd_UnregisterWext(pAdapter->dev);
 
@@ -1631,6 +1634,8 @@ int wlan_hdd_ftm_close(hdd_context_t *pHddCtx)
 #else
     nl_srv_exit();
 #endif /* WLAN_KD_READY_NOTIFIER */
+    ptt_sock_deactivate_svc(pHddCtx);
+
     //TODO----------
     //Deregister the device with the kernel
     hdd_UnregisterWext(pAdapter->dev);
@@ -1654,8 +1659,6 @@ int wlan_hdd_ftm_close(hdd_context_t *pHddCtx)
 
     //Close VOSS
     wlan_ftm_vos_close(vosContext);
-
-
     vosStatus = vos_event_destroy(&pHddCtx->ftm.ftm_vos_event);
     if (!VOS_IS_STATUS_SUCCESS(vosStatus))
     {
@@ -3926,7 +3929,7 @@ static VOS_STATUS wlan_ftm_priv_set_power_index(hdd_adapter_t *pAdapter,
     if (pwr_source > 3)
     {
         VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_FATAL,
-                   "%s:invalid power index source. valid mode is 0 , 1, 2. ",
+                   "%s:invalid power index source. valid mode is 0, 1, 2, 3. ",
                    __func__);
         return VOS_STATUS_E_FAILURE;
     }
@@ -3959,6 +3962,7 @@ static VOS_STATUS wlan_ftm_priv_set_power_index(hdd_adapter_t *pAdapter,
         goto done;
     }
 
+    ftm_status.powerIndex = pwr_source;
 done:
 
    return status;
@@ -4048,7 +4052,8 @@ static VOS_STATUS wlan_ftm_priv_start_stop_tx_pktgen(hdd_adapter_t *pAdapter,v_U
 
         if (ftm_status.powerCtlMode == 2) //only for CLPC mode
         {
-           status = wlan_ftm_priv_set_power_index(pAdapter, FIXED_POWER_DBM) != VOS_STATUS_SUCCESS; //power index source set to Fixed
+           status = wlan_ftm_priv_set_power_index(pAdapter,
+                                                  ftm_status.powerIndex);
            if(status != VOS_STATUS_SUCCESS)
            {
               goto done;
@@ -4472,7 +4477,7 @@ static VOS_STATUS wlan_ftm_priv_get_txpower(hdd_adapter_t *pAdapter,v_U16_t *pTx
         status = VOS_STATUS_E_FAILURE;
         goto done;
     }
-    *pTxPwr = pMsgBody->GetTxPowerReport.pwrTemplateIndex;
+    *pTxPwr = ((((pMsgBody->GetTxPowerReport.pwrTemplateIndex & 0x1F) + 4)*50)/100);
 
  done:
 
@@ -4495,8 +4500,11 @@ static VOS_STATUS wlan_ftm_priv_get_txpower(hdd_adapter_t *pAdapter,v_U16_t *pTx
 
 static VOS_STATUS wlan_ftm_priv_get_txrate(hdd_adapter_t *pAdapter,char *pTxRate)
 {
-    VOS_STATUS status = VOS_STATUS_SUCCESS;
-    v_U16_t ii;
+    uPttMsgs *pMsgBody;
+    VOS_STATUS status;
+    v_U16_t rate_index,ii;
+    long ret;
+
     hdd_context_t *pHddCtx = (hdd_context_t *)pAdapter->pHddCtx;
 
     if (pHddCtx->ftm.ftm_state != WLAN_FTM_STARTED)
@@ -4506,8 +4514,51 @@ static VOS_STATUS wlan_ftm_priv_get_txrate(hdd_adapter_t *pAdapter,char *pTxRate
         return VOS_STATUS_E_FAILURE;
     }
 
+    if (NULL == pMsgBuf)
+    {
+        VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_FATAL,
+                   "%s:pMsgBuf is NULL", __func__);
+        return VOS_STATUS_E_NOMEM;
+    }
+    vos_mem_set(pMsgBuf, sizeof(tPttMsgbuffer), 0);
+    init_completion(&pHddCtx->ftm.ftm_comp_var);
+    pMsgBuf->msgId = PTT_MSG_GET_TX_POWER_REPORT;
+    pMsgBuf->msgBodyLength = sizeof(tMsgPttGetTxPowerReport) + PTT_HEADER_LENGTH;
+
+    pMsgBody = &pMsgBuf->msgBody;
+
+    status = wlan_ftm_postmsg((v_U8_t*)pMsgBuf,pMsgBuf->msgBodyLength);
+
+    if (status != VOS_STATUS_SUCCESS)
+    {
+        VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_FATAL,
+                   "%s:wlan_ftm_postmsg failed", __func__);
+        status = VOS_STATUS_E_FAILURE;
+        goto done;
+    }
+    ret = wait_for_completion_interruptible_timeout(&pHddCtx->ftm.ftm_comp_var,
+                                msecs_to_jiffies(WLAN_FTM_COMMAND_TIME_OUT));
+    if (0 >= ret )
+    {
+        VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
+                   FL("wait on ftm_comp_var failed %ld"), ret);
+    }
+
+    if (pMsgBuf->msgResponse == PTT_STATUS_SUCCESS) {
+
+       rate_index = pMsgBody->GetTxPowerReport.rate;
+    }
+    else {
+       /*Return the default rate*/
+       //rate_index = HAL_PHY_RATE_11A_6_MBPS;
+        VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_FATAL,
+                   "%s: PTT_MSG_GET_TX_POWER_REPORT failed", __func__);
+        status = VOS_STATUS_E_FAILURE;
+        goto done;
+    }
+
     for(ii = 0; ii < SIZE_OF_TABLE(rateName_rateIndex_tbl); ii++) {
-        if(rateName_rateIndex_tbl[ii].rate_index == ftm_status.frameParams.rate)
+        if(rateName_rateIndex_tbl[ii].rate_index == rate_index)
           break;
     }
     if(ii >= SIZE_OF_TABLE(rateName_rateIndex_tbl))
@@ -4517,8 +4568,8 @@ static VOS_STATUS wlan_ftm_priv_get_txrate(hdd_adapter_t *pAdapter,char *pTxRate
         goto done;
     }
     strlcpy(pTxRate,rateName_rateIndex_tbl[ii].rate_str, WE_FTM_MAX_STR_LEN);
-
 done:
+
     return status;
 
 }
@@ -5162,6 +5213,18 @@ static int __iw_ftm_setint_getnone(struct net_device *dev, struct iw_request_inf
            break;
         }
 
+        case WE_SET_POWER_INDEX:
+        {
+            status = wlan_ftm_priv_set_power_index(pAdapter, set_value);
+            if (status != VOS_STATUS_SUCCESS)
+            {
+                hddLog(VOS_TRACE_LEVEL_ERROR, "set power index failed = %d",
+                    status);
+                ret = -EINVAL;
+            }
+            break;
+        }
+
         default:
         {
             hddLog(LOGE, "Invalid IOCTL setvalue command %d value %d",
@@ -5653,6 +5716,11 @@ static const struct iw_priv_args we_ftm_private_args[] = {
         IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
         0,
         "set_cb" },
+
+    {   WE_SET_POWER_INDEX,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        0,
+        "set_power_index" },
 
     /* handlers for main ioctl */
     {   WLAN_FTM_PRIV_SET_NONE_GET_INT,

@@ -569,7 +569,16 @@ typedef enum
    WLAN_HAL_LOST_LINK_PARAMETERS_IND        = 312,
    WLAN_HAL_SEND_FREQ_RANGE_CONTROL_IND     = 313,
 
+   WLAN_HAL_ANTENNA_DIVERSITY_SELECTION_REQ  = 330,
+   WLAN_HAL_ANTENNA_DIVERSITY_SELECTION_RSP  = 331,
+   WLAN_HAL_MODIFY_ROAM_PARAMS_IND           = 332,
    WLAN_HAL_SET_ALLOWED_ACTION_FRAMES_IND    = 333,
+
+   /* PER based roaming support */
+   WLAN_HAL_SET_PER_ROAM_CONFIG_REQ          = 334,
+   WLAN_HAL_SET_PER_ROAM_CONFIG_RSP          = 335,
+   WLAN_HAL_PER_ROAM_SCAN_TRIGGER_REQ        = 336,
+   WLAN_HAL_PER_ROAM_SCAN_TRIGGER_RSP        = 337,
 
    WLAN_HAL_MSG_MAX = WLAN_HAL_MSG_TYPE_MAX_ENUM_SIZE
 }tHalHostMsgType;
@@ -6776,6 +6785,8 @@ typedef enum {
     MGMT_FRAME_LOGGING     = 53,
     ENHANCED_TXBD_COMPLETION = 54,
     LOGGING_ENHANCEMENT    = 55,
+    ANTENNA_DIVERSITY_SELECTION  = 62,
+    PER_BASED_ROAMING      = 63,
     MAX_FEATURE_SUPPORTED  = 128,
 } placeHolderInCapBitmap;
 
@@ -8660,6 +8671,95 @@ typedef PACKED_PRE struct PACKED_POST
 }  tFWLoggingInitRespMsg,  * tpFWLoggingInitRespMsg;
 
 /*---------------------------------------------------------------------------
+ *   WLAN_HAL_SET_PER_ROAM_CONFIG_REQ
+ *---------------------------------------------------------------------------*/
+
+typedef PACKED_PRE struct PACKED_POST {
+    tANI_U32 request_id;
+    tANI_U32 isPERRoamCCAEnabled;
+    tANI_U32 rateUpThreshold;
+    tANI_U32 rateDownThreshold;
+    tANI_U32 waitPeriodForNextPERScan;
+    tANI_U32 PERtimerThreshold;
+    tANI_U32 PERroamTriggerPercent;
+    tANI_S16 PERRoamFullScanThreshold;
+    tANI_U16 reserved;
+} tPerRoamConfigParams, * tpPerRoamConfigParams;
+
+typedef PACKED_PRE struct PACKED_POST
+{
+   tHalMsgHeader header;
+   tPerRoamConfigParams   perRoamConfigParams;
+}  tSetPerRoamConfigReq, * tpSetPerRoamConfigReq;
+
+/*---------------------------------------------------------------------------
+ *   WLAN_HAL_SET_PER_ROAM_CONFIG_RSP
+ *---------------------------------------------------------------------------*/
+
+typedef PACKED_PRE struct PACKED_POST
+{
+    /* Success or Failure */
+    tANI_U32   status;
+} tConfigPerRoamRspParams, * tpConfigPerRoamRspParams;
+
+typedef PACKED_PRE struct PACKED_POST
+{
+   tHalMsgHeader header;
+   tConfigPerRoamRspParams configPerRoamRspParams;
+}  tSetPerRoamConfigRsp, * tpSetPerRoamConfigRsp;
+
+/*---------------------------------------------------------------------------
+ *   WLAN_HAL_PER_ROAM_SCAN_TRIGGER_REQ
+ *---------------------------------------------------------------------------*/
+
+typedef PACKED_PRE struct PACKED_POST {
+    bool                roamScanReq;
+} tStartRoamScanTriggerParams, * tpStartRoamScanTriggerParams;
+
+typedef PACKED_PRE struct PACKED_POST {
+
+   tHalMsgHeader header;
+   tStartRoamScanTriggerParams startRoamScanTriggerParams;
+}  tStartRoamScanReq, *tpStartRoamScanReq;
+
+/*---------------------------------------------------------------------------
+ *     WLAN_HAL_PER_ROAM_SCAN_TRIGGER_RSP
+ *---------------------------------------------------------------------------*/
+
+typedef PACKED_PRE struct PACKED_POST
+{
+    /* Success /Failure / Nil result */
+    tANI_U32   status;
+} tConfigRoamScanRspParams, * tpConfigRoamScanRspParams;
+
+typedef PACKED_PRE struct PACKED_POST
+{
+   tHalMsgHeader header;
+   tConfigRoamScanRspParams configRoamScanRspParams;
+}  tSetRoamScanConfigRsp, * tpSetRoamScanConfigRsp;
+
+
+#define PER_ROAM_MAX_AP_CNT 30
+#define PER_ROAM_MAX_CANDIDATE_CNT 15
+
+/* Candidate Information to be shared in the Candidate Indication,
+ * similar to what is sent in legacy roaming with following additional info
+ */
+
+typedef PACKED_PRE struct PACKED_POST {
+    tANI_U8    channelNumber;
+    tANI_U8    channelCCA;
+    tANI_U8    otherApCount;
+    tANI_S8    otherApRssi[PER_ROAM_MAX_AP_CNT];
+} tCandidateChannelInfo, * tpCandidateChannelInfo;
+
+typedef PACKED_PRE struct PACKED_POST {
+    tANI_U32    candidateCount;
+    tCandidateChannelInfo  channelInfo[PER_ROAM_MAX_CANDIDATE_CNT];
+} tPerRoamScanResult, * tpPerRoamScanResult;
+
+
+/*---------------------------------------------------------------------------
  * WLAN_HAL_FW_LOGGING_DXE_DONE_IND
  *-------------------------------------------------------------------------*/
 typedef PACKED_PRE struct PACKED_POST
@@ -8784,6 +8884,44 @@ typedef PACKED_PRE struct PACKED_POST
 {
   tANI_U8   status;
 }tHalAvoidFreqRangeCtrlParam, *tpHalAvoidFreqRangeCtrlParam;
+
+/*---------------------------------------------------------------------------
+* WLAN_HAL_ANTENNA_DIVERSITY_SELECTION_REQ
+*-------------------------------------------------------------------------*/
+typedef PACKED_PRE struct PACKED_POST
+{
+ tANI_U32 reserved;
+}tHalAntennaDiversitySelectionReqParams, *tpHalAntennaDiversitySelectionReqParams;
+
+typedef PACKED_PRE struct PACKED_POST
+{
+ tHalMsgHeader header;
+ tHalAntennaDiversitySelectionReqParams AntDivSelReqParams;
+} tHalAntennaDiversitySelectionReqMsg;
+
+/*---------------------------------------------------------------------------
+* WLAN_HAL_ANTENNA_DIVERSITY_SELECTION_RSP
+*-------------------------------------------------------------------------*/
+
+typedef PACKED_PRE struct PACKED_POST
+{
+ tANI_U16 status;
+ tANI_U32 selectedAntennaId;
+ tANI_U32 reserved;
+}tHalAntennaDiversitySelectionRspParams, *tpHalAntennaDiversitySelectionRspParams;
+
+/* WDI_MODIFY_ROAM_PARAMS_IND */
+typedef PACKED_PRE struct PACKED_POST {
+   tANI_U8 param;
+   tANI_U32 value;
+} tHalModifyRoamParamsIndParams, *tpHalModifyRoamParamsIndParams;
+
+typedef PACKED_PRE struct PACKED_POST
+{
+  tHalMsgHeader header;
+  tHalModifyRoamParamsIndParams  modifyRoamParamsReqParams;
+} tHalModifyRoamParamsInd, *tpHalModifyRoamParamsInd;
+
 
 #if defined(__ANI_COMPILER_PRAGMA_PACK_STACK)
 #pragma pack(pop)

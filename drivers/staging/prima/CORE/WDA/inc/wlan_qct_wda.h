@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -501,7 +501,9 @@ typedef struct
    vos_event_t          ftmStopDoneEvent;
 
    tWDA_AddSelfStaDebugParams wdaAddSelfStaParams;
-   wpt_uint8  mgmtTxfailureCnt;
+
+   uint8_t  mgmt_pktfree_fail;
+   vos_lock_t mgmt_pkt_lock;
 
 } tWDA_CbContext ; 
 
@@ -789,6 +791,7 @@ tBssSystemRole wdaGetGlobalSystemRole(tpAniSirGlobal pMac);
 #  define WDA_GET_OFFLOADSCANLEARN(pRxMeta) (((WDI_DS_RxMetaInfoType*)(pRxMeta))->offloadScanLearn)
 /* WDA_GET_ROAMCANDIDATEIND **************************************************/
 #  define WDA_GET_ROAMCANDIDATEIND(pRxMeta) (((WDI_DS_RxMetaInfoType*)(pRxMeta))->roamCandidateInd)
+#  define WDA_IF_PER_ROAMCANDIDATEIND(pRxMeta) (((WDI_DS_RxMetaInfoType*)(pRxMeta))->perRoamCndInd)
 #endif
 #ifdef WLAN_FEATURE_EXTSCAN
 #define WDA_GET_EXTSCANFULLSCANRESIND(pRxMeta) (((WDI_DS_RxMetaInfoType*)(pRxMeta))->extscanBuffer)
@@ -1107,6 +1110,8 @@ tSirRetStatus uMacPostCtrlMsg(void* pSirGlobal, tSirMbMsg* pMb);
 #define WDA_FINISH_OEM_DATA_REQ        SIR_HAL_FINISH_OEM_DATA_REQ
 #endif
 
+#define WDA_SET_ALLOWED_ACTION_FRAMES_IND      SIR_HAL_SET_ALLOWED_ACTION_FRAMES
+
 #define WDA_SET_MAX_TX_POWER_REQ       SIR_HAL_SET_MAX_TX_POWER_REQ
 #define WDA_SET_MAX_TX_POWER_RSP       SIR_HAL_SET_MAX_TX_POWER_RSP
 
@@ -1164,6 +1169,10 @@ tSirRetStatus uMacPostCtrlMsg(void* pSirGlobal, tSirMbMsg* pMb);
 #ifdef WLAN_FEATURE_ROAM_SCAN_OFFLOAD
 #define WDA_ROAM_SCAN_OFFLOAD_REQ   SIR_HAL_ROAM_SCAN_OFFLOAD_REQ
 #define WDA_ROAM_SCAN_OFFLOAD_RSP   SIR_HAL_ROAM_SCAN_OFFLOAD_RSP
+#define WDA_PER_ROAM_SCAN_OFFLOAD_REQ   SIR_HAL_PER_ROAM_SCAN_OFFLOAD_REQ
+#define WDA_PER_ROAM_SCAN_OFFLOAD_RSP   SIR_HAL_PER_ROAM_SCAN_OFFLOAD_RSP
+#define WDA_PER_ROAM_SCAN_TRIGGER_REQ   SIR_HAL_PER_ROAM_SCAN_TRIGGER_REQ
+#define WDA_PER_ROAM_SCAN_TRIGGER_RSP   SIR_HAL_PER_ROAM_SCAN_TRIGGER_RSP
 #endif
 
 #ifdef WLAN_WAKEUP_EVENTS
@@ -1292,6 +1301,8 @@ eHalStatus WDA_SetRegDomain(void * clientCtxt, v_REGDOMAIN_t regId,
 
 #define WDA_SEND_FREQ_RANGE_CONTROL_IND        SIR_HAL_SEND_FREQ_RANGE_CONTROL_IND
 
+#define WDA_ANTENNA_DIVERSITY_SELECTION_REQ    SIR_HAL_ANTENNA_DIVERSITY_SELECTION_REQ
+#define WDA_PAUSE_TL_IND                       SIR_HAL_PAUSE_TL_IND
 
 #define HAL_USE_BD_RATE2_FOR_MANAGEMENT_FRAME 0x40 // Bit 6 will be used to control BD rate for Management frames
 
@@ -2061,22 +2072,6 @@ void WDA_TransportChannelDebug
   v_BOOL_t       displaySnapshot,
   v_U8_t         debugFlags
 );
-
-/*==========================================================================
-  FUNCTION   WDA_TransportKickDxe
-
-  DESCRIPTION
-    Request Kick DXE when first hdd TX time out
-    happens
-
-  PARAMETERS
-    NONE
-
-  RETURN VALUE
-    NONE
-
-===========================================================================*/
-void WDA_TransportKickDxe(void);
 
 /*==========================================================================
   FUNCTION   WDA_TrafficStatsTimerActivate

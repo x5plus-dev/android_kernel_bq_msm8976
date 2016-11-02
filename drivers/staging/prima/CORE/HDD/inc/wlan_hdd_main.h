@@ -290,7 +290,7 @@ extern spinlock_t hdd_context_lock;
 #define FW_STATS_CONTEXT_MAGIC  0x5022474E //FW STATS
 #define GET_FRAME_LOG_MAGIC   0x464c4f47   //FLOG
 #define MON_MODE_MSG_MAGIC 0x51436B3A //MON_MODE
-
+#define ANTENNA_CONTEXT_MAGIC 0x414E544E //ANTN
 #define MON_MODE_MSG_TIMEOUT 5000
 #define MON_MODE_START 1
 #define MON_MODE_STOP  0
@@ -1136,6 +1136,7 @@ struct hdd_adapter_s
 #endif
    /* Flag to ensure PSB is configured through framework */
    v_U8_t psbChanged;
+   v_ULONG_t prev_rx_packets;
    /* UAPSD psb value configured through framework */
    v_U8_t configuredPsb;
    v_BOOL_t is_roc_inprogress;
@@ -1157,6 +1158,9 @@ struct hdd_adapter_s
 
    /* Time stamp for start RoC request */
    v_TIME_t startRocTs;
+
+   /* Currently used antenna Index*/
+   int antennaIndex;
 };
 
 #define WLAN_HDD_GET_STATION_CTX_PTR(pAdapter) (&(pAdapter)->sessionCtx.station)
@@ -1453,8 +1457,25 @@ struct hdd_context_s
 #ifdef WLAN_FEATURE_LINK_LAYER_STATS
     struct hdd_ll_stats_context ll_stats_context;
 #endif /* End of WLAN_FEATURE_LINK_LAYER_STATS */
+    vos_timer_t    delack_timer;
+    struct mutex   cur_rx_level_lock;
+    v_U32_t        cur_rx_level;
+    v_U64_t        prev_rx;
+    v_ULONG_t      mode;
 };
 
+typedef enum  {
+        TP_IND_LOW = 1,
+        TP_IND_MEDIUM,
+        TP_IND_HIGH,
+}TP_IND_TYPE;
+
+/* Use to notify the TDLS or BTCOEX is mode enable */
+typedef enum
+{
+   WLAN_TDLS_MODE,
+   WLAN_BTCOEX_MODE,
+} WLAN_MODE_TYPE;
 
 #define WLAN_HDD_IS_LOAD_IN_PROGRESS(pHddCtx)  \
             (pHddCtx->isLoadUnloadInProgress & WLAN_HDD_LOAD_IN_PROGRESS)
@@ -1615,6 +1636,25 @@ void hdd_checkandupdate_phymode( hdd_context_t *pHddCtx);
 #endif
 int hdd_wmmps_helper(hdd_adapter_t *pAdapter, tANI_U8 *ptr);
 
+/*
+ * start/stop bandwidth compute timer, Based on which tcp delack
+ * value will be configured
+ */
+void hdd_manage_delack_timer(hdd_context_t *pHddCtx);
+
+void hdd_update_prev_rx_packet_count(hdd_context_t *pHddCtx);
+void hdd_start_delack_timer(hdd_context_t *pHddCtx);
+void hdd_set_default_stop_delack_timer(hdd_context_t *pHddCtx);
+v_U8_t hdd_get_total_sessions(hdd_context_t *pHddCtx);
+void hdd_set_delack_value(hdd_context_t *pHddCtx, v_U32_t next_rx_level);
+
+/*
+ *  Calculate the packet channel bandwidth and send notification to cnss demon
+ */
+void hdd_request_tcp_delack(hdd_context_t *pHddCtx,
+                                               uint64_t rx_packets);
+void hdd_tcp_delack_compute_function(void *priv);
+
 #ifdef FEATURE_WLAN_BATCH_SCAN
 /**---------------------------------------------------------------------------
 
@@ -1726,7 +1766,4 @@ static inline void hdd_init_ll_stat_ctx(void)
 }
 #endif /* WLAN_FEATURE_LINK_LAYER_STATS */
 void hdd_wlan_free_wiphy_channels(struct wiphy *wiphy);
-void hdd_initialize_adapter_common(hdd_adapter_t *pAdapter);
-
-
 #endif    // end #if !defined( WLAN_HDD_MAIN_H )

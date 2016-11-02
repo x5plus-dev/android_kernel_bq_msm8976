@@ -100,7 +100,7 @@
 #endif
 #endif
 
-#define MAX_CHANNEL MAX_2_4GHZ_CHANNEL + NUM_5GHZ_CHANNELS
+#define MAX_CHANNEL NUM_2_4GHZ_CHANNELS + NUM_5GHZ_CHANNELS
 
 typedef struct {
    u8 element_id;
@@ -959,7 +959,7 @@ VOS_STATUS wlan_hdd_cfg80211_roam_metrics_handover(hdd_adapter_t *pAdapter,
 
 #ifdef FEATURE_WLAN_WAPI
 void wlan_hdd_cfg80211_set_key_wapi(hdd_adapter_t* pAdapter,
-              u8 key_index, const u8 *mac_addr, const u8 *key , int key_Len);
+              u8 key_index, const u8 *mac_addr, u8 *key , int key_Len);
 #endif
 struct wiphy *wlan_hdd_cfg80211_wiphy_alloc(int priv_size);
 
@@ -1008,13 +1008,24 @@ extern void wlan_hdd_cfg80211_update_replayCounterCallback(void *callbackContext
 void* wlan_hdd_change_country_code_cb(void *pAdapter);
 void hdd_select_cbmode( hdd_adapter_t *pAdapter,v_U8_t operationChannel);
 
-v_U8_t* wlan_hdd_cfg80211_get_ie_ptr(
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                     const v_U8_t *pIes,
+#if defined(CFG80211_DISCONNECTED_V2) || \
+(LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0))
+static inline void wlan_hdd_cfg80211_indicate_disconnect(struct net_device *dev,
+                                                         bool from_ap,
+                                                         int reason)
+{
+    cfg80211_disconnected(dev, reason, NULL, 0,
+                          from_ap, GFP_KERNEL);
+}
 #else
-                                     v_U8_t *pIes,
+static inline void wlan_hdd_cfg80211_indicate_disconnect(struct net_device *dev,
+                                                         bool from_ap,
+                                                         int reason)
+{
+    cfg80211_disconnected(dev, reason, NULL, 0,
+                          GFP_KERNEL);
+}
 #endif
-                                     int length, v_U8_t eid);
 
 #ifdef FEATURE_WLAN_CH_AVOID
 int wlan_hdd_send_avoid_freq_event(hdd_context_t *pHddCtx,
@@ -1027,19 +1038,5 @@ void wlan_hdd_cfg80211_extscan_callback(void *ctx, const tANI_U16 evType,
 #endif /* WLAN_FEATURE_EXTSCAN */
 
 void wlan_hdd_cfg80211_nan_init(hdd_context_t *pHddCtx);
-
-#if !(defined (SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC))
-static inline struct sk_buff *
-backported_cfg80211_vendor_event_alloc(struct wiphy *wiphy,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-    struct wireless_dev *wdev,
-#endif
-    int approxlen,
-    int event_idx, gfp_t gfp)
-{
-    return cfg80211_vendor_event_alloc(wiphy, approxlen, event_idx, gfp);
-}
-#define cfg80211_vendor_event_alloc backported_cfg80211_vendor_event_alloc
-#endif
 
 #endif

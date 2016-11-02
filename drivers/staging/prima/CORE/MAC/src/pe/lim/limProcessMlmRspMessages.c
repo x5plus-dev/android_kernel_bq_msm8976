@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -1131,6 +1131,7 @@ limProcessMlmAuthInd(tpAniSirGlobal pMac, tANI_U32 *pMsgBuf)
         // Log error
         limLog(pMac, LOGP,
            FL("call to AllocateMemory failed for eWNI_SME_AUTH_IND"));
+        return;
     }
     limCopyU16((tANI_U8 *) &pSirSmeAuthInd->messageType, eWNI_SME_AUTH_IND);
     limAuthIndSerDes(pMac, (tpLimMlmAuthInd) pMsgBuf,
@@ -1826,20 +1827,12 @@ limHandleSmeJoinResult(tpAniSirGlobal pMac, tSirResultCodes resultCode, tANI_U16
             pStaDs->mlmStaContext.protStatusCode = protStatusCode;
             //Done: 7-27-2009. JIM_FIX_ME: at the end of limCleanupRxPath, make sure PE is sending eWNI_SME_JOIN_RSP to SME
             limCleanupRxPath(pMac, pStaDs, psessionEntry);
-            /* Cleanup if add bss failed */
-            if(psessionEntry->addBssfailed)
-            {
-              dphDeleteHashEntry(pMac, pStaDs->staAddr, pStaDs->assocId,
-                                   &psessionEntry->dph.dphHashTable);
-              goto error;
-            }
             vos_mem_free(psessionEntry->pLimJoinReq);
             psessionEntry->pLimJoinReq = NULL;
             return;
         }
     }
 
-error:
     vos_mem_free(psessionEntry->pLimJoinReq);
     psessionEntry->pLimJoinReq = NULL;
     //Delete teh session if JOIN failure occurred.
@@ -1903,17 +1896,10 @@ limHandleSmeReaasocResult(tpAniSirGlobal pMac, tSirResultCodes resultCode, tANI_
             pStaDs->mlmStaContext.resultCode = resultCode;
             pStaDs->mlmStaContext.protStatusCode = protStatusCode;
             limCleanupRxPath(pMac, pStaDs, psessionEntry);
-            /* Cleanup if add bss failed */
-            if(psessionEntry->addBssfailed)
-            {
-              dphDeleteHashEntry(pMac, pStaDs->staAddr, pStaDs->assocId,
-                                   &psessionEntry->dph.dphHashTable);
-              goto error;
-            }
             return;
         }
     }
-error:
+
     //Delete teh session if REASSOC failure occurred.
     if(resultCode != eSIR_SME_SUCCESS)
     {
@@ -3286,7 +3272,6 @@ limProcessStaMlmAddBssRsp( tpAniSirGlobal pMac, tpSirMsgQ limMsgQ,tpPESession ps
             mlmAssocCnf.resultCode = (tSirResultCodes) eSIR_SME_FT_REASSOC_FAILURE;
         else
             mlmAssocCnf.resultCode = (tSirResultCodes) eSIR_SME_REFUSED;
-        psessionEntry->addBssfailed = true;
     }
 
     if(mlmAssocCnf.resultCode != eSIR_SME_SUCCESS)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -56,13 +56,7 @@ int wpa_tdls_is_allowed_force_peer(tdlsCtx_t *pHddTdlsCtx, u8 *mac);
 static void wlan_hdd_tdls_implicit_send_discovery_request(tdlsCtx_t *pHddTdlsCtx);
 #endif
 
-static u8 wlan_hdd_tdls_hash_key (
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                  const u8 *mac
-#else
-                                  u8 *mac
-#endif
-                                 )
+static u8 wlan_hdd_tdls_hash_key (u8 *mac)
 {
     int i;
     u8 key = 0;
@@ -820,6 +814,7 @@ void wlan_hdd_tdls_btCoex_cb(void *data, int indType)
     u16 connectedTdlsPeers;
     tdlsCtx_t *pHddTdlsCtx;
     hddTdlsPeer_t *currPeer;
+    tANI_U16 numCurrTdlsPeers = 0;
 
     ENTER();
     if ((NULL == data) || (indType < 0))
@@ -913,6 +908,9 @@ void wlan_hdd_tdls_btCoex_cb(void *data, int indType)
                }
             }
         }
+        /* stop TCP delack timer if BtCoex is enable  */
+        set_bit(WLAN_BTCOEX_MODE, &pHddCtx->mode);
+        hdd_manage_delack_timer(pHddCtx);
    }
    /* BtCoex notification type enabled, Enable TDLS */
    else if (indType == SIR_COEX_IND_TYPE_TDLS_ENABLE)
@@ -929,7 +927,15 @@ void wlan_hdd_tdls_btCoex_cb(void *data, int indType)
             pHddCtx->is_tdls_btc_enabled = TRUE;
             wlan_hdd_tdls_set_mode(pHddCtx, pHddCtx->tdls_mode_last, FALSE);
         }
-   }
+
+        clear_bit(WLAN_BTCOEX_MODE, &pHddCtx->mode);
+        numCurrTdlsPeers = wlan_hdd_tdlsConnectedPeers(pAdapter);
+        if(numCurrTdlsPeers == 0) {
+             /* start delack timer if BtCoex is disable and tdls is not present */
+             hdd_manage_delack_timer(pHddCtx);
+        }
+  }
+
    EXIT();
    return;
 }
@@ -961,24 +967,14 @@ void  wlan_hdd_tdls_init(hdd_context_t *pHddCtx )
         hddLog(VOS_TRACE_LEVEL_ERROR, FL("Failed to register BT Coex TDLS callback"));
     }
 
-    if ((TRUE == pHddCtx->cfg_ini->fEnableTDLSSupport) &&
-        (TRUE == sme_IsFeatureSupportedByFW(TDLS)))
+    if (FALSE == pHddCtx->cfg_ini->fEnableTDLSImplicitTrigger)
     {
-        if (FALSE == pHddCtx->cfg_ini->fEnableTDLSImplicitTrigger)
-        {
-            pHddCtx->tdls_mode = eTDLS_SUPPORT_EXPLICIT_TRIGGER_ONLY;
-            hddLog(LOGE, FL("TDLS Implicit trigger not enabled!"));
-            return;
-        }
-        pHddCtx->tdls_mode = eTDLS_SUPPORT_ENABLED;
+        pHddCtx->tdls_mode = eTDLS_SUPPORT_EXPLICIT_TRIGGER_ONLY;
+        hddLog(VOS_TRACE_LEVEL_INFO, "%s TDLS Implicit trigger not enabled!", __func__);
     }
     else
     {
-        hddLog(LOGE,
-               FL("TDLS not enabled (%d) or FW doesn't support (%d)"),
-               pHddCtx->cfg_ini->fEnableTDLSSupport,
-               sme_IsFeatureSupportedByFW(TDLS));
-        pHddCtx->tdls_mode = eTDLS_SUPPORT_NOT_ENABLED;
+        pHddCtx->tdls_mode = eTDLS_SUPPORT_ENABLED;
     }
 }
 
@@ -1233,13 +1229,7 @@ static void wlan_hdd_tdls_timers_destroy(tdlsCtx_t *pHddTdlsCtx)
    if mac address doesn't exist, create a list and add, return pointer
    return NULL if fails to get new mac address
 */
-hddTdlsPeer_t *wlan_hdd_tdls_get_peer(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                      const u8 *mac
-#else
-                                      u8 *mac
-#endif
-          )
+hddTdlsPeer_t *wlan_hdd_tdls_get_peer(hdd_adapter_t *pAdapter, u8 *mac)
 {
     struct list_head *head;
     hddTdlsPeer_t *peer;
@@ -1300,11 +1290,7 @@ hddTdlsPeer_t *wlan_hdd_tdls_get_peer(hdd_adapter_t *pAdapter,
 }
 
 int wlan_hdd_tdls_set_cap(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                   const u8* mac,
-#else
                                    u8* mac,
-#endif
                                    tTDLSCapType cap)
 {
     hddTdlsPeer_t *curr_peer;
@@ -1368,11 +1354,7 @@ void wlan_hdd_tdls_set_peer_link_status(hddTdlsPeer_t *curr_peer,
 }
 
 void wlan_hdd_tdls_set_link_status(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                   const u8 *mac,
-#else
-                                   u8 *mac,
-#endif
+                                   u8* mac,
                                    tTDLSLinkStatus linkStatus,
                                    tTDLSLinkReason reason)
 {
@@ -1507,11 +1489,7 @@ int wlan_hdd_tdls_recv_discovery_resp(hdd_adapter_t *pAdapter, u8 *mac)
 }
 
 int wlan_hdd_tdls_set_peer_caps(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                const u8 *mac,
-#else
                                 u8 *mac,
-#endif
                                 tCsrStaParams *StaParams,
                                 tANI_BOOLEAN isBufSta,
                                 tANI_BOOLEAN isOffChannelSupported,
@@ -1557,12 +1535,7 @@ int wlan_hdd_tdls_set_peer_caps(hdd_adapter_t *pAdapter,
     return 0;
 }
 
-int wlan_hdd_tdls_get_link_establish_params(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                            const u8 *mac,
-#else
-                                            u8 *mac,
-#endif
+int wlan_hdd_tdls_get_link_establish_params(hdd_adapter_t *pAdapter, u8 *mac,
                                             tCsrTdlsLinkEstablishParams* tdlsLinkEstablishParams)
 {
     hddTdlsPeer_t *curr_peer;
@@ -1607,13 +1580,7 @@ int wlan_hdd_tdls_get_link_establish_params(hdd_adapter_t *pAdapter,
     return 0;
 }
 
-int wlan_hdd_tdls_set_rssi(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                           const u8 *mac,
-#else
-                           u8 *mac,
-#endif
-                           tANI_S8 rxRssi)
+int wlan_hdd_tdls_set_rssi(hdd_adapter_t *pAdapter, u8 *mac, tANI_S8 rxRssi)
 {
     hddTdlsPeer_t *curr_peer;
 
@@ -1630,13 +1597,7 @@ int wlan_hdd_tdls_set_rssi(hdd_adapter_t *pAdapter,
     return 0;
 }
 
-int wlan_hdd_tdls_set_responder(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                const u8 *mac,
-#else
-                                u8 *mac,
-#endif
-                                tANI_U8 responder)
+int wlan_hdd_tdls_set_responder(hdd_adapter_t *pAdapter, u8 *mac, tANI_U8 responder)
 {
     hddTdlsPeer_t *curr_peer;
     hdd_context_t *pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
@@ -1675,13 +1636,7 @@ int wlan_hdd_tdls_get_responder(hdd_adapter_t *pAdapter, u8 *mac)
     return (curr_peer->is_responder);
 }
 
-int wlan_hdd_tdls_set_signature(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                const u8 *mac,
-#else
-                                u8 *mac,
-#endif
-                                tANI_U8 uSignature)
+int wlan_hdd_tdls_set_signature(hdd_adapter_t *pAdapter, u8 *mac, tANI_U8 uSignature)
 {
     hddTdlsPeer_t *curr_peer;
     hdd_context_t *pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
@@ -1716,13 +1671,7 @@ void wlan_hdd_tdls_extract_sa(struct sk_buff *skb, u8 *mac)
     memcpy(mac, skb->data+6, 6);
 }
 
-int wlan_hdd_tdls_increment_pkt_count(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                      const u8 *mac,
-#else
-                                      u8 *mac,
-#endif
-                                      u8 tx)
+int wlan_hdd_tdls_increment_pkt_count(hdd_adapter_t *pAdapter, u8 *mac, u8 tx)
 {
     hddTdlsPeer_t *curr_peer;
     hdd_context_t *pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
@@ -1832,17 +1781,6 @@ int wlan_hdd_tdls_set_params(struct net_device *dev, tdls_config_params_t *confi
     tdlsCtx_t *pHddTdlsCtx = WLAN_HDD_GET_TDLS_CTX_PTR(pAdapter);
     eTDLSSupportMode req_tdls_mode;
 
-    if ((TRUE != pHddCtx->cfg_ini->fEnableTDLSSupport) &&
-        (TRUE != sme_IsFeatureSupportedByFW(TDLS)))
-    {
-        hddLog(LOGE,
-               FL("TDLS not enabled (%d) or FW doesn't support (%d)"),
-               pHddCtx->cfg_ini->fEnableTDLSSupport,
-               sme_IsFeatureSupportedByFW(TDLS));
-        pHddCtx->tdls_mode = eTDLS_SUPPORT_NOT_ENABLED;
-        return -EINVAL;
-    }
-
     if (NULL == pHddTdlsCtx)
     {
         hddLog(VOS_TRACE_LEVEL_ERROR, FL("TDLS not enabled!"));
@@ -1886,13 +1824,7 @@ int wlan_hdd_tdls_set_params(struct net_device *dev, tdls_config_params_t *confi
     return 0;
 }
 
-int wlan_hdd_tdls_set_sta_id(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                             const u8 *mac,
-#else
-                             u8 *mac,
-#endif
-                             u8 staId)
+int wlan_hdd_tdls_set_sta_id(hdd_adapter_t *pAdapter, u8 *mac, u8 staId)
 {
     hddTdlsPeer_t *curr_peer;
     hdd_context_t *pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
@@ -1916,12 +1848,7 @@ int wlan_hdd_tdls_set_sta_id(hdd_adapter_t *pAdapter,
     return 0;
 }
 
-int wlan_hdd_tdls_set_force_peer(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                 const u8 *mac,
-#else
-                                 u8 *mac,
-#endif
+int wlan_hdd_tdls_set_force_peer(hdd_adapter_t *pAdapter, u8 *mac,
                                  tANI_BOOLEAN forcePeer)
 {
     /* NOTE:
@@ -1945,12 +1872,7 @@ error:
 /* if peerMac is found, then it returns pointer to hddTdlsPeer_t
    otherwise, it returns NULL
 */
-hddTdlsPeer_t *wlan_hdd_tdls_find_peer(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                       const u8 *mac,
-#else
-                                       u8 *mac,
-#endif
+hddTdlsPeer_t *wlan_hdd_tdls_find_peer(hdd_adapter_t *pAdapter, u8 *mac,
                                        tANI_BOOLEAN mutexLock)
 {
     u8 key;
@@ -1997,13 +1919,7 @@ hddTdlsPeer_t *wlan_hdd_tdls_find_peer(hdd_adapter_t *pAdapter,
     return NULL;
 }
 
-hddTdlsPeer_t *wlan_hdd_tdls_find_all_peer(hdd_context_t *pHddCtx,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                           const u8 *mac
-#else
-                                           u8 *mac
-#endif
-)
+hddTdlsPeer_t *wlan_hdd_tdls_find_all_peer(hdd_context_t *pHddCtx, u8 *mac)
 {
     hdd_adapter_list_node_t *pAdapterNode = NULL, *pNext = NULL;
     hdd_adapter_t *pAdapter = NULL;
@@ -2035,13 +1951,7 @@ hddTdlsPeer_t *wlan_hdd_tdls_find_all_peer(hdd_context_t *pHddCtx,
 }
 
 
-int wlan_hdd_tdls_reset_peer(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                             const u8 *mac
-#else
-                             u8 *mac
-#endif
-)
+int wlan_hdd_tdls_reset_peer(hdd_adapter_t *pAdapter, u8 *mac)
 {
     hdd_context_t *pHddCtx;
     hddTdlsPeer_t *curr_peer;
@@ -2493,13 +2403,7 @@ u8 wlan_hdd_tdls_is_peer_progress(hdd_adapter_t *pAdapter, u8 *mac)
  * skip_self - if TRUE, skip this mac. otherwise, check all the peer list. if
    mac is NULL, this argument is ignored, and check for all the peer list.
  */
-static hddTdlsPeer_t *wlan_hdd_tdls_find_progress_peer(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                                       const u8 *mac,
-#else
-                                                       u8 *mac,
-#endif
-                                                       u8 skip_self)
+static hddTdlsPeer_t *wlan_hdd_tdls_find_progress_peer(hdd_adapter_t *pAdapter, u8 *mac, u8 skip_self)
 {
     int i;
     struct list_head *head;
@@ -2536,12 +2440,7 @@ static hddTdlsPeer_t *wlan_hdd_tdls_find_progress_peer(hdd_adapter_t *pAdapter,
     return NULL;
 }
 
-hddTdlsPeer_t *wlan_hdd_tdls_is_progress(hdd_context_t *pHddCtx,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                                         const u8 *mac,
-#else
-                                         u8 *mac,
-#endif
+hddTdlsPeer_t *wlan_hdd_tdls_is_progress(hdd_context_t *pHddCtx, u8 *mac,
                                          u8 skip_self, tANI_BOOLEAN mutexLock)
 {
     hdd_adapter_list_node_t *pAdapterNode = NULL, *pNext = NULL;
@@ -3167,10 +3066,10 @@ void wlan_hdd_tdls_indicate_teardown(hdd_adapter_t *pAdapter,
 int wlan_hdd_set_callback(hddTdlsPeer_t *curr_peer,
                          cfg80211_exttdls_callback callback)
 {
+
     /* NOTE:
      * Hold mutex tdls_lock before calling this function
      */
-
     hdd_context_t *pHddCtx;
     hdd_adapter_t   *pAdapter;
 
@@ -3219,11 +3118,7 @@ void wlan_hdd_tdls_get_wifi_hal_state(hddTdlsPeer_t *curr_peer,
 }
 
 int wlan_hdd_tdls_get_status(hdd_adapter_t *pAdapter,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
-                             const tANI_U8* mac,
-#else
                              tANI_U8* mac,
-#endif
                              tANI_S32 *state,
                              tANI_S32 *reason)
 {

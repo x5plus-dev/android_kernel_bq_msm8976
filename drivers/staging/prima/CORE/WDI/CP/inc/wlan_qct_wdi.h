@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -5367,6 +5367,23 @@ typedef struct
    function pointer will be called */
    void*                      pUserData;
 } WDI_RoamScanOffloadReqParamsType;
+
+typedef struct
+{
+  wpt_uint32  requestId;
+  wpt_uint32  rateUpThreshold;
+  wpt_uint32  rateDownThreshold;
+  wpt_uint32  isPERRoamCCAEnabled;
+  wpt_uint32  waitPeriodForNextPERScan;
+  wpt_uint32  PERtimerThreshold;
+  wpt_uint32  PERroamTriggerPercent;
+  wpt_int16   PERRoamFullScanThreshold;
+} WDI_PERRoamOffloadScanInfo;
+
+typedef struct
+{
+  wpt_boolean roamScanReq; // Request info for all peers
+} WDI_PERRoamTriggerScanInfo;
 #endif //WLAN_FEATURE_ROAM_SCAN_OFFLOAD
 
 /*---------------------------------------------------------------------------
@@ -6142,6 +6159,14 @@ typedef struct
 
 }WDI_MonStartReqType;
 
+/**
+ * struct WDI_AllowedActionFramesInd - Allowed Action frames details
+ *
+ */
+struct WDI_AllowedActionFramesInd {
+   wpt_uint32 bitmask;
+   wpt_uint32 reserved;
+};
 /*----------------------------------------------------------------------------
  *   WDI callback types
  *--------------------------------------------------------------------------*/
@@ -7731,6 +7756,8 @@ typedef void  (*WDI_UpdateChannelRspCb)(WDI_Status  wdiStatus,
 typedef void  (*WDI_RoamOffloadScanCb)(WDI_Status  wdiStatus,
                                        void*       pUserData);
 
+typedef void (*WDI_PERRoamOffloadScanCb)(WDI_Status wdiStatus, void *pUserData);
+typedef void (*WDI_PERRoamTriggerScanCb)(WDI_Status wdiStatus, void *pUserData);
 #endif
 /*---------------------------------------------------------------------------
    WDI_SetTxPerTrackingRspCb
@@ -8062,6 +8089,9 @@ typedef void  (*WDI_FatalEventLogsRspCb)(
                          WDI_FatalEventLogsRspParamType *wdiRsp, void *pUserData);
 
 typedef void  (*WDI_MonModeRspCb)(void *pEventData,void *pUserData);
+
+typedef void (*WDI_AntennaDivSelRspCb)(WDI_Status status,
+              void *resp, void *pUserData);
 
 /*========================================================================
  *     Function Declarations and Documentation
@@ -10764,6 +10794,22 @@ WDI_RoamScanOffloadReq
   WDI_RoamOffloadScanCb                 wdiRoamOffloadScancb,
   void*                                 pUserData
 );
+
+WDI_Status
+WDI_PERRoamScanOffloadReq
+(
+  WDI_PERRoamOffloadScanInfo              *pwdiRoamScanOffloadReqParams,
+  WDI_PERRoamOffloadScanCb                 wdiRoamOffloadScancb,
+  void*                                    pUserData
+);
+
+WDI_Status
+WDI_PERRoamScanTriggerReq
+(
+  WDI_PERRoamTriggerScanInfo              *pwdiRoamScanTriggerReqParams,
+  WDI_PERRoamTriggerScanCb                 wdiRoamTriggerScancb,
+  void*                                    pUserData
+);
 #endif
 
 /**
@@ -11201,16 +11247,6 @@ void WDI_TransportChannelDebug
 );
 
 /**
- @brief WDI_TransportKickDxe -
-    Request Kick DXE when first HDD TX time out
-    happens
- @param  none
- @see
- @return none
-*/
-void WDI_TransportKickDxe(void);
-
-/**
  @brief WDI_SsrTimerCB
     Callback function for SSR timer, if this is called then the graceful
     shutdown for Riva did not happen.
@@ -11615,5 +11651,35 @@ wpt_uint32 val
 #ifdef __cplusplus
  }
 #endif 
+
+/**
+ @brief WDI_GetCurrentAntennaIndex
+    This API is called to send getCurretAntennaIndex request to FW
+
+ @param pUserData: pointer to request params
+        wdiLLStatsSetRspCb     : set wificonfig response callback
+        reserved: request parameter
+ @see
+ @return SUCCESS or FAIL
+*/
+WDI_Status
+WDI_GetCurrentAntennaIndex
+(
+  void *pUserData,
+  WDI_AntennaDivSelRspCb wdiAntennaDivSelRspCb,
+  wpt_uint32 reserved
+);
+
+/**
+ * WDI_SetAllowedActionFramesInd - This API is called to send Allowed
+ *                    Action frame details to FW
+ * @allowed_action_frames: Pointer to WDI_AllowedActionFramesInd structure
+ *                     which holds bitmask of allowed action frames
+ *
+ */
+WDI_Status
+WDI_SetAllowedActionFramesInd(
+		struct WDI_AllowedActionFramesInd *allowed_action_frames
+);
 
 #endif /* #ifndef WLAN_QCT_WDI_H */

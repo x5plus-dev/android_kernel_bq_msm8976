@@ -609,8 +609,8 @@ typedef tSap_SoftapStats WLANTL_TRANSFER_STA_TYPE;
 typedef enum
 {
   WLANTL_DEBUG_TX_SNAPSHOT = 1<<0,
+
   WLANTL_DEBUG_FW_CLEANUP = 1<<1,
-  WLANTL_DEBUG_KICKDXE = 1<<2
 }WLANTL_DebugFlags;
 
 /*----------------------------------------------------------------------------
@@ -3289,4 +3289,14 @@ WLANTL_FatalError
  v_VOID_t
 );
 
+#ifdef WLAN_FEATURE_ROAM_SCAN_OFFLOAD
+void WLANTL_StartRxRateMonitor(v_PVOID_t pvosGCtx, wpt_uint8 staId,
+                  wpt_uint16 minRate,
+                  wpt_uint16 maxRate, wpt_uint8 minPercentage,
+                  wpt_uint16 minPktRequired, void *hHal,
+                  wpt_uint64 timeToWait,
+                  void (*triggerRoamScanfn) (void *, wpt_uint8));
+
+void WLANTL_StopRxRateMonitor(v_PVOID_t pvosGCtx);
+#endif
 #endif /* #ifndef WLAN_QCT_WLANTL_H */

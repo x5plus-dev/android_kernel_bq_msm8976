@@ -185,6 +185,7 @@ static const hdd_freq_chan_map_t freq_chan_map[] = { {2412, 1}, {2417, 2},
 #define WE_GET_SAP_AUTO_CHANNEL_SELECTION 8
 #define WE_GET_CONCURRENCY_MODE 9
 #define WE_GET_SCAN_BAND_PREFERENCE     10
+#define WE_GET_ANTENA_DIVERSITY_SELECTION 11
 /* Private ioctls and their sub-ioctls */
 #define WLAN_PRIV_SET_INT_GET_INT     (SIOCIWFIRSTPRIV + 2)
 
@@ -2558,16 +2559,21 @@ static int __iw_get_genie(struct net_device *dev,
                                    pAdapter->sessionId,
                                    &length,
                                    genIeBytes);
-    length = VOS_MIN((u_int16_t) length, DOT11F_IE_RSN_MAX_LEN);
-    if (wrqu->data.length < length)
-    {
-        hddLog(LOG1, "%s: failed to copy data to user buffer", __func__);
+    if (eHAL_STATUS_SUCCESS != status) {
+        hddLog(LOGE, FL("failed to get WPA-RSN IE data"));
         return -EFAULT;
     }
-    vos_mem_copy( extra, (v_VOID_t*)genIeBytes, length);
-    wrqu->data.length = length;
 
-    hddLog(LOG1,"%s: RSN IE of %d bytes returned", __func__, wrqu->data.length );
+    wrqu->data.length = length;
+    if (length > DOT11F_IE_RSN_MAX_LEN) {
+        hddLog(LOGE,
+               FL("invalid buffer length length:%d"), length);
+        return -E2BIG;
+    }
+
+    vos_mem_copy( extra, (v_VOID_t*)genIeBytes, length);
+
+    hddLog(LOG1, FL("RSN IE of %d bytes returned"), wrqu->data.length );
 
     EXIT();
 
@@ -4176,15 +4182,15 @@ static int __iw_set_priv(struct net_device *dev,
     }
     else if (strcasecmp(cmd, "scan-active") == 0)
     {
-        hddLog(VOS_TRACE_LEVEL_ERROR,
-                   FL("making default scan to active"));
+        hddLog(LOG1,
+                FL("making default scan to active"));
         pHddCtx->scan_info.scan_mode = eSIR_ACTIVE_SCAN;
         ret = snprintf(cmd, cmd_len, "OK");
     }
     else if (strcasecmp(cmd, "scan-passive") == 0)
     {
-        hddLog(VOS_TRACE_LEVEL_ERROR,
-                   FL("making default scan to passive"));
+        hddLog(LOG1,
+               FL("making default scan to passive"));
         pHddCtx->scan_info.scan_mode = eSIR_PASSIVE_SCAN;
         ret = snprintf(cmd, cmd_len, "OK");
     }
@@ -4195,41 +4201,6 @@ static int __iw_set_priv(struct net_device *dev,
     else if( strcasecmp(cmd, "linkspeed") == 0 )
     {
         ret = iw_get_linkspeed(dev, info, wrqu, cmd);
-    }
-    else if( strncasecmp(cmd, "COUNTRY", 7) == 0 ) {
-        char *country_code;
-        long lrc;
-        eHalStatus eHal_status;
-
-        country_code =  cmd + 8;
-
-        init_completion(&pAdapter->change_country_code);
-
-        eHal_status = sme_ChangeCountryCode(pHddCtx->hHal,
-                                            (void *)(tSmeChangeCountryCallback)wlan_hdd_change_country_code_callback,
-                                            country_code,
-                                            pAdapter,
-                                            pHddCtx->pvosContext,
-                                            eSIR_TRUE,
-                                            eSIR_TRUE);
-
-        /* Wait for completion */
-        lrc = wait_for_completion_interruptible_timeout(&pAdapter->change_country_code,
-                                    msecs_to_jiffies(WLAN_WAIT_TIME_STATS));
-
-        if (lrc <= 0)
-        {
-            hddLog(VOS_TRACE_LEVEL_ERROR,"%s: SME %s while setting country code ",
-                   __func__, "Timed out");
-        }
-
-        if (eHAL_STATUS_SUCCESS != eHal_status)
-        {
-            VOS_TRACE( VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-                       "%s: SME Change Country code fail", __func__);
-            kfree(cmd);
-            return -EIO;
-        }
     }
     else if( strncasecmp(cmd, "rssi", 4) == 0 )
     {
@@ -5359,6 +5330,74 @@ static int iw_set_mlme(struct net_device *dev,
     return ret;
 }
 
+int wlan_hdd_set_proximity(int set_value)
+{
+    sHwCalValues hwCalValues;
+    uint16 hwCalTxPower;
+    uint8 txPwr = TX_PWR_DEF;
+
+    hddLog(LOG1, FL("WE_SET_PROXIMITY_ENABLE: %d"), set_value);
+
+    if (TRUE == set_value) {
+        if(vos_nv_read( VNV_HW_CAL_VALUES, &hwCalValues,
+                        NULL, sizeof(sHwCalValues) )
+                            != VOS_STATUS_SUCCESS) {
+            return -EINVAL;
+        }
+        hwCalTxPower = (uint16)(hwCalValues.calData.hwParam7 >> 16);
+
+        hddLog(LOG1, FL("hwCalTxPower:%x nv_data:%x"),
+                hwCalTxPower, hwCalValues.calData.hwParam7);
+
+        txPwr = (int8)(hwCalTxPower & 0x00FF);
+        txPwr = txPwr/10;
+        if (txPwr < TX_PWR_MIN)
+            txPwr = TX_PWR_MIN;
+        if (txPwr > TX_PWR_MAX)
+            txPwr = TX_PWR_MAX;
+
+        if (sme_SetMaxTxPowerPerBand(eCSR_BAND_24, txPwr) !=
+                                eHAL_STATUS_SUCCESS) {
+            hddLog(VOS_TRACE_LEVEL_ERROR,
+              FL("Setting tx power failed for 2.4GHz band %d"), txPwr);
+            return -EIO;
+        }
+
+        txPwr = (int8)((hwCalTxPower >> 8) & 0x00FF);
+        txPwr /= 10;
+        if (txPwr < TX_PWR_MIN)
+            txPwr = TX_PWR_MIN;
+        if (txPwr > TX_PWR_MAX)
+            txPwr = TX_PWR_MAX;
+
+        if (sme_SetMaxTxPowerPerBand(eCSR_BAND_5G, txPwr) !=
+                                eHAL_STATUS_SUCCESS) {
+            hddLog(VOS_TRACE_LEVEL_ERROR,
+              FL("setting tx power failed for 5GHz band %d"), txPwr);
+            return -EIO;
+        }
+    }
+    else if(FALSE == set_value) {
+        if (sme_SetMaxTxPowerPerBand(eCSR_BAND_24, txPwr) !=
+                                eHAL_STATUS_SUCCESS) {
+            hddLog(VOS_TRACE_LEVEL_ERROR,
+              FL("Setting tx power failed for 2.4GHz band %d"), txPwr);
+            return -EIO;
+        }
+
+        if (sme_SetMaxTxPowerPerBand(eCSR_BAND_5G, txPwr) !=
+                                eHAL_STATUS_SUCCESS) {
+            hddLog(VOS_TRACE_LEVEL_ERROR,
+              FL("setting tx power failed for 5GHz band %d"), txPwr);
+            return -EIO;
+        }
+    }
+    else {
+        return -EINVAL;
+    }
+
+    return eHAL_STATUS_SUCCESS;
+}
 /* set param sub-ioctls */
 static int __iw_setint_getnone(struct net_device *dev,
                                struct iw_request_info *info,
@@ -5954,70 +5993,7 @@ static int __iw_setint_getnone(struct net_device *dev,
         }
         case WE_SET_PROXIMITY_ENABLE:
         {
-            sHwCalValues hwCalValues;
-            uint16 hwCalTxPower;
-            uint8 txPwr = TX_PWR_DEF;
-
-            hddLog(LOG1, FL("WE_SET_PROXIMITY_ENABLE: %d"), set_value);
-
-            if (TRUE == set_value) {
-                if(vos_nv_read( VNV_HW_CAL_VALUES, &hwCalValues,
-                                NULL, sizeof(sHwCalValues) )
-                                    != VOS_STATUS_SUCCESS) {
-                    ret = -EINVAL;
-                    break;
-                }
-                hwCalTxPower = (uint16)(hwCalValues.calData.hwParam7 >> 16);
-
-                hddLog(LOG1, FL("hwCalTxPower:%x nv_data:%x"),
-                        hwCalTxPower, hwCalValues.calData.hwParam7);
-
-                txPwr = (int8)(hwCalTxPower & 0x00FF);
-                txPwr = txPwr/10;
-                if (txPwr < TX_PWR_MIN)
-                    txPwr = TX_PWR_MIN;
-                if (txPwr > TX_PWR_MAX)
-                    txPwr = TX_PWR_MAX;
-
-                if (sme_SetMaxTxPowerPerBand(eCSR_BAND_24, txPwr) !=
-                                        eHAL_STATUS_SUCCESS) {
-                    hddLog(VOS_TRACE_LEVEL_ERROR,
-                      FL("Setting tx power failed for 2.4GHz band %d"), txPwr);
-                    ret = -EIO;
-                }
-
-                txPwr = (int8)((hwCalTxPower >> 8) & 0x00FF);
-                txPwr /= 10;
-                if (txPwr < TX_PWR_MIN)
-                    txPwr = TX_PWR_MIN;
-                if (txPwr > TX_PWR_MAX)
-                    txPwr = TX_PWR_MAX;
-
-                if (sme_SetMaxTxPowerPerBand(eCSR_BAND_5G, txPwr) !=
-                                        eHAL_STATUS_SUCCESS) {
-                    hddLog(VOS_TRACE_LEVEL_ERROR,
-                      FL("setting tx power failed for 5GHz band %d"), txPwr);
-                    ret = -EIO;
-                }
-            }
-            else if(FALSE == set_value) {
-                if (sme_SetMaxTxPowerPerBand(eCSR_BAND_24, txPwr) !=
-                                        eHAL_STATUS_SUCCESS) {
-                    hddLog(VOS_TRACE_LEVEL_ERROR,
-                      FL("Setting tx power failed for 2.4GHz band %d"), txPwr);
-                    ret = -EIO;
-                }
-
-                if (sme_SetMaxTxPowerPerBand(eCSR_BAND_5G, txPwr) !=
-                                        eHAL_STATUS_SUCCESS) {
-                    hddLog(VOS_TRACE_LEVEL_ERROR,
-                      FL("setting tx power failed for 5GHz band %d"), txPwr);
-                    ret = -EIO;
-                }
-            }
-            else {
-                ret = -EINVAL;
-            }
+            ret = wlan_hdd_set_proximity(set_value);
             break;
         }
         default:
@@ -6224,6 +6200,113 @@ static int iw_setchar_getnone(struct net_device *dev,
     return ret;
 }
 
+static void hdd_GetCurrentAntennaIndex(int antennaId, void *pContext)
+{
+   struct statsContext *context;
+   hdd_adapter_t *pAdapter;
+
+   if (NULL == pContext)
+   {
+      hddLog(VOS_TRACE_LEVEL_ERROR,
+             "%s: Bad param, pContext [%p]",
+             __func__, pContext);
+      return;
+   }
+
+   context = pContext;
+   pAdapter      = context->pAdapter;
+
+   spin_lock(&hdd_context_lock);
+
+   if ((NULL == pAdapter) || (ANTENNA_CONTEXT_MAGIC != context->magic))
+   {
+      /* the caller presumably timed out so there is nothing we can do */
+      spin_unlock(&hdd_context_lock);
+      hddLog(VOS_TRACE_LEVEL_WARN,
+             "%s: Invalid context, pAdapter [%p] magic [%08x]",
+              __func__, pAdapter, context->magic);
+      return;
+   }
+
+   context->magic = 0;
+   pAdapter->antennaIndex = antennaId;
+
+   complete(&context->completion);
+   spin_unlock(&hdd_context_lock);
+}
+
+static VOS_STATUS wlan_hdd_get_current_antenna_index(hdd_adapter_t *pAdapter,
+                                                     int *antennaIndex)
+{
+   hdd_context_t *pHddCtx;
+   eHalStatus halStatus;
+   struct statsContext context;
+   long lrc;
+
+   ENTER();
+   if (NULL == pAdapter)
+   {
+       hddLog(VOS_TRACE_LEVEL_WARN,
+              "%s: Invalid context, pAdapter", __func__);
+       return VOS_STATUS_E_FAULT;
+   }
+   pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
+   if (0 != (wlan_hdd_validate_context(pHddCtx)))
+   {
+       return VOS_STATUS_E_FAULT;
+   }
+   if (TRUE != sme_IsFeatureSupportedByFW(ANTENNA_DIVERSITY_SELECTION))
+   {
+       hddLog(VOS_TRACE_LEVEL_ERROR,
+              "%s: ANTENNA_DIVERSITY_SELECTION is not supported by Firwmare",
+               __func__);
+       return VOS_STATUS_E_NOSUPPORT;
+   }
+   init_completion(&context.completion);
+   context.pAdapter = pAdapter;
+   context.magic = ANTENNA_CONTEXT_MAGIC;
+
+   halStatus = sme_GetCurrentAntennaIndex(pHddCtx->hHal,
+                                         hdd_GetCurrentAntennaIndex,
+                                         &context, pAdapter->sessionId);
+   if (eHAL_STATUS_SUCCESS != halStatus)
+   {
+       spin_lock(&hdd_context_lock);
+       context.magic = 0;
+       spin_unlock(&hdd_context_lock);
+       hddLog(VOS_TRACE_LEVEL_ERROR,"%s: Unable to retrieve Antenna Index",
+              __func__);
+       /* we'll returned a cached value below */
+       *antennaIndex = -1;
+       return VOS_STATUS_E_FAILURE;
+   }
+   else
+   {
+       /* request was sent -- wait for the response */
+       lrc = wait_for_completion_interruptible_timeout(&context.completion,
+                                    msecs_to_jiffies(WLAN_WAIT_TIME_STATS));
+       if (lrc <= 0)
+       {
+           spin_lock(&hdd_context_lock);
+           context.magic = 0;
+           spin_unlock(&hdd_context_lock);
+           hddLog(VOS_TRACE_LEVEL_ERROR, "%s:SME %s while retrieving Antenna"
+                                         " Index",
+                  __func__, (0 == lrc) ? "timeout" : "interrupt");
+           *antennaIndex = -1;
+           return VOS_STATUS_E_FAILURE;
+       }
+   }
+   spin_lock(&hdd_context_lock);
+   context.magic = 0;
+   spin_unlock(&hdd_context_lock);
+
+   *antennaIndex = pAdapter->antennaIndex;
+
+   EXIT();
+   return VOS_STATUS_SUCCESS;
+}
+
 /* get param sub-ioctls */
 static int __iw_setnone_getint(struct net_device *dev,
                                struct iw_request_info *info,
@@ -6359,7 +6442,11 @@ static int __iw_setnone_getint(struct net_device *dev,
                       "scanBandPreference = %d\n", *value);
             break;
         }
-
+        case WE_GET_ANTENA_DIVERSITY_SELECTION:
+        {
+             wlan_hdd_get_current_antenna_index(pAdapter, value);
+             break;
+        }
         default:
         {
             hddLog(LOGE, "Invalid IOCTL get_value command %d ",value[0]);
@@ -9299,7 +9386,7 @@ VOS_STATUS iw_set_pno(struct net_device *dev, struct iw_request_info *info,
     {
         VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
                   "PNO ssid length input is not valid %s",ptr);
-        goto error;
+        return VOS_STATUS_E_FAILURE;
     }
 
     if (( 0 == pnoRequest.aNetworks[i].ssId.length ) ||
@@ -9355,7 +9442,7 @@ VOS_STATUS iw_set_pno(struct net_device *dev, struct iw_request_info *info,
     {
       VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_WARN,
                 "Incorrect number of channels");
-      goto error;
+      return VOS_STATUS_E_FAILURE;
     }
 
     if ( 0 !=  pnoRequest.aNetworks[i].ucChannelCount)
@@ -9367,7 +9454,7 @@ VOS_STATUS iw_set_pno(struct net_device *dev, struct iw_request_info *info,
                            &nOffset))
             {    VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
                            "PNO network channel input is not valid %s",ptr);
-                  goto error;
+                  return VOS_STATUS_E_FAILURE;
             }
             /*Advance to next channel number*/
             ptr += nOffset;
@@ -10482,7 +10569,6 @@ static const struct iw_priv_args we_private_args[] = {
     {   WE_SET_RTS_CTS_HTVHT,
         IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
         0, "setRtsCtsHtVht" },
-
     {   WE_SET_PROXIMITY_ENABLE,
         IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
         0, "setProximity" },
@@ -10537,6 +10623,11 @@ static const struct iw_priv_args we_private_args[] = {
         0,
         IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
         "get_scan_pref"},
+
+    {   WE_GET_ANTENA_DIVERSITY_SELECTION,
+        0,
+        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
+        "getCurAnt"},
 
     /* handlers for main ioctl */
     {   WLAN_PRIV_SET_CHAR_GET_NONE,
