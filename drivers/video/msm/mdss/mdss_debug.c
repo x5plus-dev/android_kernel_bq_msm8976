@@ -79,7 +79,7 @@ static ssize_t panel_debug_base_offset_write(struct file *file,
 
 	buf[count] = 0;	/* end of string */
 
-	if (sscanf(buf, "%x %u", &off, &cnt) != 2)
+	if (sscanf(buf, "%x %d", &off, &cnt) != 2)
 		return -EFAULT;
 
 	if (off > dbg->max_offset)
@@ -199,7 +199,6 @@ static ssize_t panel_debug_base_reg_read(struct file *file,
 	struct mdss_panel_data *panel_data = ctl->panel_data;
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = container_of(panel_data,
 					struct mdss_dsi_ctrl_pdata, panel_data);
-	int rc = -EFAULT;
 
 	if (!dbg)
 		return -ENODEV;
@@ -218,8 +217,7 @@ static ssize_t panel_debug_base_reg_read(struct file *file,
 
 	if (!rx_buf || !panel_reg_buf) {
 		pr_err("not enough memory to hold panel reg dump\n");
-		rc = -ENOMEM;
-		goto read_reg_fail;
+		return -ENOMEM;
 	}
 
 	if (mdata->debug_inf.debug_enable_clock)
@@ -254,7 +252,8 @@ static ssize_t panel_debug_base_reg_read(struct file *file,
 read_reg_fail:
 	kfree(rx_buf);
 	kfree(panel_reg_buf);
-	return rc;
+	return -EFAULT;
+
 }
 
 static const struct file_operations panel_off_fops = {
@@ -694,11 +693,11 @@ static ssize_t mdss_debug_factor_write(struct file *file,
 
 	if (strnchr(buf, count, '/')) {
 		/* Parsing buf as fraction */
-		if (sscanf(buf, "%u/%u", &numer, &denom) != 2)
+		if (sscanf(buf, "%d/%d", &numer, &denom) != 2)
 			return -EFAULT;
 	} else {
 		/* Parsing buf as percentage */
-		if (kstrtouint(buf, 0, &numer))
+		if (sscanf(buf, "%d", &numer) != 1)
 			return -EFAULT;
 		denom = 100;
 	}
@@ -1005,7 +1004,7 @@ static ssize_t mdss_debug_perf_bw_limit_write(struct file *file,
 
 	if (strnchr(buf, count, ' ')) {
 		/* Parsing buf */
-		if (sscanf(buf, "%u %u", &mode, &val) != 2)
+		if (sscanf(buf, "%d %d", &mode, &val) != 2)
 			return -EFAULT;
 	}
 
