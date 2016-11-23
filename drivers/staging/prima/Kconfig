@@ -14,6 +14,11 @@ config PRONTO_WLAN
 	help
 	Add support for the Qualcomm Atheros Pronto WLAN module
 
+
+#	depends on WLAN
+#	depends on CFG80211
+#        depends on WCNSS_CORE
+
 if PRIMA_WLAN != n || PRONTO_WLAN != n
 
 config PRIMA_WLAN_BTAMP

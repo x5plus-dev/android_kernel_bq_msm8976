@@ -672,8 +672,6 @@ static void hdd_SendAssociationEvent(struct net_device *dev,tCsrRoamInfo *pCsrRo
                 MAC_ADDR_ARRAY(wrqu.ap_addr.sa_data));
         hdd_SendUpdateBeaconIEsEvent(pAdapter, pCsrRoamInfo);
 
-        hdd_manage_delack_timer(pHddCtx);
-
         /* Send IWEVASSOCRESPIE Event if WLAN_FEATURE_CIQ_METRICS is Enabled Or
          * Send IWEVASSOCRESPIE Event if WLAN_FEATURE_VOWIFI_11R is Enabled
          * and fFTEnable is TRUE */
@@ -704,8 +702,6 @@ static void hdd_SendAssociationEvent(struct net_device *dev,tCsrRoamInfo *pCsrRo
         pr_info("wlan: disconnected\n");
         type = WLAN_STA_DISASSOC_DONE_IND;
         memset(wrqu.ap_addr.sa_data,'\0',ETH_ALEN);
-
-        hdd_manage_delack_timer(pHddCtx);
     }
     hdd_dump_concurrency_info(pHddCtx);
 
@@ -1137,14 +1133,6 @@ static eHalStatus hdd_DisConnectHandler( hdd_adapter_t *pAdapter, tCsrRoamInfo *
     }
 
      hdd_wmm_adapter_clear(pAdapter);
-     /* Clear PER based roam stats */
-#ifdef WLAN_FEATURE_ROAM_SCAN_OFFLOAD
-     if (sme_IsFeatureSupportedByFW(PER_BASED_ROAMING) &&
-         (WLAN_HDD_INFRA_STATION == pAdapter->device_mode) &&
-         pHddCtx->cfg_ini && pHddCtx->cfg_ini->isPERRoamEnabled &&
-         pHddCtx->cfg_ini->isPERRoamRxPathEnabled)
-         sme_unset_per_roam_rxconfig(pHddCtx->hHal);
-#endif
 #if defined(WLAN_FEATURE_VOWIFI_11R)
      sme_FTReset(WLAN_HDD_GET_HAL_CTX(pAdapter));
 #endif
@@ -1596,22 +1584,6 @@ static eHalStatus hdd_AssociationCompletionHandler( hdd_adapter_t *pAdapter, tCs
         pAdapter->maxRateFlags = pRoamInfo->maxRateFlags;
         // Save the connection info from CSR...
         hdd_connSaveConnectInfo( pAdapter, pRoamInfo, eCSR_BSS_TYPE_INFRASTRUCTURE );
-
-#ifdef WLAN_FEATURE_ROAM_SCAN_OFFLOAD
-        if (sme_IsFeatureSupportedByFW(PER_BASED_ROAMING) &&
-            (WLAN_HDD_INFRA_STATION == pAdapter->device_mode) &&
-            !hddDisconInProgress &&
-            pHddCtx->cfg_ini && pHddCtx->cfg_ini->isPERRoamEnabled &&
-            pHddCtx->cfg_ini->isPERRoamRxPathEnabled)
-            sme_set_per_roam_rxconfig(pHddCtx->hHal,
-                 pHddStaCtx->conn_info.staId[0],
-                 pHddCtx->cfg_ini->rateDownThreshold,
-                 pHddCtx->cfg_ini->rateUpThreshold,
-                 pHddCtx->cfg_ini->PERroamTriggerPercent,
-                 pHddCtx->cfg_ini->PERroamRxPktsThreshold,
-                 pHddCtx->cfg_ini->waitPeriodForNextPERScan);
-#endif
-
 #ifdef FEATURE_WLAN_WAPI
         if ( pRoamInfo->u.pConnectedProfile->AuthType == eCSR_AUTH_TYPE_WAPI_WAI_CERTIFICATE ||
                 pRoamInfo->u.pConnectedProfile->AuthType == eCSR_AUTH_TYPE_WAPI_WAI_PSK )
@@ -1757,8 +1729,7 @@ static eHalStatus hdd_AssociationCompletionHandler( hdd_adapter_t *pAdapter, tCs
                                          (int)pRoamInfo->pBssDesc->channelId);
                         hddLog(LOG1, "assocReqlen %d assocRsplen %d", assocReqlen,
                                          assocRsplen);
-                        if (pHddCtx->cfg_ini &&
-                            pHddCtx->cfg_ini->gEnableRoamDelayStats)
+                        if (pHddCtx->cfg_ini->gEnableRoamDelayStats)
                         {
                             vos_record_roam_event(e_HDD_SEND_REASSOC_RSP, NULL, 0);
                         }
@@ -1812,8 +1783,7 @@ static eHalStatus hdd_AssociationCompletionHandler( hdd_adapter_t *pAdapter, tCs
                     if(ft_carrier_on)
                     {
                         hdd_SendReAssocEvent(dev, pAdapter, pRoamInfo, reqRsnIe, reqRsnLength);
-                        if (pHddCtx->cfg_ini &&
-                            pHddCtx->cfg_ini->gEnableRoamDelayStats)
+                        if (pHddCtx->cfg_ini->gEnableRoamDelayStats)
                         {
                             vos_record_roam_event(e_HDD_SEND_REASSOC_RSP, NULL, 0);
                         }
@@ -1907,7 +1877,7 @@ static eHalStatus hdd_AssociationCompletionHandler( hdd_adapter_t *pAdapter, tCs
             hddLog(VOS_TRACE_LEVEL_INFO, FL("Enabling queues"));
             netif_tx_wake_all_queues(dev);
         }
-        if (pHddCtx->cfg_ini && pHddCtx->cfg_ini->gEnableRoamDelayStats)
+        if (pHddCtx->cfg_ini->gEnableRoamDelayStats)
         {
             vos_record_roam_event(e_HDD_ENABLE_TX_QUEUE, NULL, 0);
         }

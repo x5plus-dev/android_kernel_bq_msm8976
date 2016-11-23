@@ -3088,8 +3088,7 @@ eHalStatus pmcSetPreferredNetworkList
     pCommand->command = eSmeCommandPnoReq;
     pCommand->sessionId = (tANI_U8)sessionId;
 
-    if (!HAL_STATUS_SUCCESS(csrQueueSmeCommand(pMac, pCommand,
-                                               !pRequestBuf->enable)))
+    if (!HAL_STATUS_SUCCESS(csrQueueSmeCommand(pMac, pCommand, TRUE)))
     {
         VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_ERROR,
                   FL("failed to post eSmeCommandPnoReq command"));

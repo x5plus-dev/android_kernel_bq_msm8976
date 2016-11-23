@@ -1792,11 +1792,8 @@ limSendSmeDeauthNtf(tpAniSirGlobal pMac, tSirMacAddr peerMacAddr, tSirResultCode
             limLog(pMac, LOG1,
                    FL("send  eWNI_SME_DISCONNECT_DONE_IND withretCode: %d"),
                        reasonCode);
-
             pSirSmeDisConDoneInd->messageType = eWNI_SME_DISCONNECT_DONE_IND;
             pSirSmeDisConDoneInd->length      = sizeof(tSirSmeDisConDoneInd);
-            vos_mem_copy(pSirSmeDisConDoneInd->peerMacAddr, peerMacAddr,
-                    sizeof(tSirMacAddr));
             pSirSmeDisConDoneInd->sessionId   = smesessionId;
 
             if (reasonCode == eSIR_SME_LOST_LINK_WITH_PEER_RESULT_CODE)

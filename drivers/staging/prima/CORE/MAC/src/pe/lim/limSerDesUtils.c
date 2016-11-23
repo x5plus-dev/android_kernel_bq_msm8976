@@ -229,16 +229,10 @@ limGetBssDescription( tpAniSirGlobal pMac, tSirBssDescription *pBssDescription,
 #endif
 #endif
 
-#if defined(FEATURE_WLAN_ESE) || defined(WLAN_FEATURE_ROAM_SCAN_OFFLOAD)
-    /* Extract QBSSLoad_present */
-    pBssDescription->QBSSLoad_present = *pBuf++;
-    len  -= sizeof(tANI_U8);
-    if (limCheckRemainingLength(pMac, len) == eSIR_FAILURE)
-        return eSIR_FAILURE;
-
-    /* Extract QBSS_ChanLoad */
-    pBssDescription->QBSS_ChanLoad = *pBuf++;
-    len  -= sizeof(tANI_U8);
+#ifdef FEATURE_WLAN_ESE
+    pBssDescription->QBSSLoad_present = limGetU16(pBuf);
+    pBuf += sizeof(tANI_U16);
+    len  -= sizeof(tANI_U16);
     if (limCheckRemainingLength(pMac, len) == eSIR_FAILURE)
         return eSIR_FAILURE;
 
@@ -283,28 +277,9 @@ limGetBssDescription( tpAniSirGlobal pMac, tSirBssDescription *pBssDescription,
         return eSIR_FAILURE;
     }
 
-    pBuf += (WSCIE_PROBE_RSP_LEN);
-    len -= (WSCIE_PROBE_RSP_LEN);
-
-    /* Extract HTCapsPresent */
-    pBssDescription->HTCapsPresent = *pBuf++;
-    len --;
-
-    /* Extract vhtCapsPresent */
-    pBssDescription->vhtCapsPresent = *pBuf++;
-    len --;
-
-    /* Extract wmeInfoPresent */
-    pBssDescription->wmeInfoPresent = *pBuf++;
-    len --;
-
-    /* Extract beacomformingCapable */
-    pBssDescription->beacomformingCapable = *pBuf++;
-    len --;
-
-    /* Extract chanWidth */
-    pBssDescription->chanWidth = *pBuf++;
-    len --;
+    /* 1 reserved byte padding */
+    pBuf += (WSCIE_PROBE_RSP_LEN + 1);
+    len -= (WSCIE_PROBE_RSP_LEN + 1);
 
     if (len > 0)
     {
