@@ -40,9 +40,7 @@ struct gf_key_map
 
 #define  GF_IOC_MAXNR    11
 
-//#define AP_CONTROL_CLK       1
 #define  USE_PLATFORM_BUS     1
-//#define  USE_SPI_BUS	1
 //#define GF_FASYNC   1	/*If support fasync mechanism.*/
 #define GF_NETLINK_ENABLE 1
 #define GF_NET_EVENT_IRQ 0

@@ -1,4 +1,4 @@
- /*Simple synchronous userspace interface to SPI devices
+ /* Simple synchronous userspace interface to SPI devices
   *
   * Copyright (C) 2006 SWAPP
   *     Andrea Paterniani <a.paterniani@swapp-eng.it>
@@ -919,15 +919,9 @@ static int gf_probe(struct platform_device *pdev)
 		gf_reg_key_kernel(gf_dev);
 		
         gf_dev->irq = gf_irq_num(gf_dev);
-#if 1
 		ret = request_threaded_irq(gf_dev->irq, NULL, gf_irq,
 					   IRQF_TRIGGER_RISING | IRQF_ONESHOT,
 					   "gf", gf_dev);
-#else
-                ret = request_irq(gf_dev->irq, gf_irq,
-                            IRQ_TYPE_EDGE_RISING, /*IRQ_TYPE_LEVEL_HIGH,*/
-                            "gf", gf_dev);
-#endif
 		if (!ret) {
 			enable_irq_wake(gf_dev->irq);
 			gf_dev->irq_enabled = 1;
@@ -1003,14 +997,6 @@ static int gf_suspend(struct spi_device *spi, pm_message_t mesg)
 static int gf_suspend(struct platform_device *pdev, pm_message_t state)
 #endif
 {
-#if 0//defined(USE_SPI_BUS)
-	struct gf_dev *gfspi_device;
-
-	pr_debug("%s: enter\n", __func__);
-
-	gfspi_device = spi_get_drvdata(spi);
-	gfspi_ioctl_clk_disable(gfspi_device);
-#endif
 	pr_info(KERN_ERR "gf_suspend_test.\n");
 	return 0;
 }
@@ -1021,24 +1007,10 @@ static int gf_resume(struct spi_device *spi)
 static int gf_resume(struct platform_device *pdev)
 #endif
 {
-#if 0//defined(USE_SPI_BUS)
-	struct gf_dev *gfspi_device;
-
-	pr_debug("%s: enter\n", __func__);
-
-	gfspi_device = spi_get_drvdata(spi);
-	gfspi_ioctl_clk_enable(gfspi_device);
-#endif
 	pr_info(KERN_ERR "gf_resume_test.\n");
 	return 0;
 }
 
-/*
-static const struct dev_pm_ops gx_pm = {
-	.suspend = gf_suspend_test,
-	.resume = gf_resume_test
-};
-*/
 static struct of_device_id gx_match_table[] = {
 	{.compatible = GF_SPIDEV_NAME,},
 	{},

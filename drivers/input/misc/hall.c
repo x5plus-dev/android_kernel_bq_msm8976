@@ -42,9 +42,7 @@ struct hall_switch_info
 	int irq;
 	int hall_switch_state;
 	struct input_dev *ipdev;
-#ifdef CONFIG_HALL_SYS
 	struct class *hall_sys_class;
-#endif
 };
 
 struct hall_switch_info *global_hall_info;
@@ -121,7 +119,6 @@ reg_vio_put:
 	return ret;
 }
 
-#ifdef CONFIG_HALL_SYS
 static ssize_t hall_state_show(struct class *class,
 		struct class_attribute *attr, char *buf)
 {
@@ -158,7 +155,6 @@ static int hall_register_class_dev(struct hall_switch_info *hall_info)
 	}
 	return 0;
 }
-#endif
 
 static int hall_probe(struct platform_device *pdev)
 {
@@ -235,9 +231,7 @@ static int hall_probe(struct platform_device *pdev)
 		goto free_input_device;
 	}
        pr_err("hall_probe end\n");
-#ifdef CONFIG_HALL_SYS
 	hall_register_class_dev(hall_info);
-#endif
 	global_hall_info = hall_info;
 
 	return 0;
@@ -258,9 +252,7 @@ free_struct:
 static int hall_remove(struct platform_device *pdev)
 {
 	struct hall_switch_info *hall = platform_get_drvdata(pdev);
-#ifdef CONFIG_HALL_SYS
 	class_destroy(hall->hall_sys_class);
-#endif
 	pr_err("hall_remove\n");
 	free_irq(hall->irq, hall->ipdev);
 	gpio_free(hall->irq_gpio);

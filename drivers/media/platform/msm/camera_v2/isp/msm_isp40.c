@@ -1509,8 +1509,8 @@ static void msm_vfe40_axi_cfg_wm_reg(
 	}
 
 	if (!stream_info->frame_based) {
-		if (!vfe_dev->hw_info->runtime_axi_update)
-			msm_camera_io_w(0x0, vfe_dev->vfe_base + wm_base);
+	if (!vfe_dev->hw_info->runtime_axi_update)
+		msm_camera_io_w(0x0, vfe_dev->vfe_base + wm_base);
 		/*WR_IMAGE_SIZE*/
 		val =
 			((msm_isp_cal_word_per_line(

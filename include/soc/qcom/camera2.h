@@ -46,6 +46,7 @@ struct vendor_eeprom{
 	char eeprom_name[128];
 	uint8_t module_id;
 };
+
 #define CAMERA_VENDOR_EEPROM_COUNT_MAX		6
 
 enum msm_camera_device_type_t {
