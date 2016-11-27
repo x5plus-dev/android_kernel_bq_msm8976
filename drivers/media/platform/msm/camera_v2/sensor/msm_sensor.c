@@ -1789,6 +1789,7 @@ int32_t msm_sensor_platform_probe(struct platform_device *pdev,
 	CDBG("%s:%d\n", __func__, __LINE__);
 	msm_sensor_init_device_name();
 	msm_sensor_set_module_info(s_ctrl);
+
 	s_ctrl->func_tbl->sensor_power_down(s_ctrl);
 	CDBG("%s:%d\n", __func__, __LINE__);
 	return rc;

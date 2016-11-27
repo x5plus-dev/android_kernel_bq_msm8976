@@ -1593,10 +1593,10 @@ static camera_vendor_module_id imx219_sunny_get_otp_vendor_module_id(struct msm_
 	if((flag&0xC0) == 0x40){
 		mid = buffer[MODULE_INFO_OFFSET];
 		rc = (mid==MID_SUNNY) ? true : false;
-	}else if((flag&0x30) == 0x10){
+	} else if((flag&0x30) == 0x10){
 		mid = buffer[MODULE_INFO_OFFSET + OTP_MODULE_INFO_GROUP_SIZE];
 		rc = (mid==MID_SUNNY) ? true : false;
-	}else
+	} else
 		rc = false;
 	CDBG("%s mid=0x%x, flag=0x%x\n", __func__, mid, flag);
 

@@ -65,3 +65,4 @@ config NFC_PN547
 	  This driver provides support for NFC NXP PN547 devices.
 	  Say Y here to compile support for PN547 devices into the
 	  kernel or say M to compile it as module (pn547).
+

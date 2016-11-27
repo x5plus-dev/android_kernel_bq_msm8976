@@ -378,7 +378,6 @@ enum battchg_enable_voters {
 };
 
 static int battery_max_current = -1;
-
 static int smbchg_debug_mask;
 module_param_named(
 	debug_mask, smbchg_debug_mask, int, S_IRUSR | S_IWUSR
@@ -3612,13 +3611,13 @@ static int smbchg_external_otg_regulator_enable(struct regulator_dev *rdev)
 	}
 
 	if (chip->only_allow_5v)
-		rc = smbchg_sec_masked_write(chip,
-					chip->usb_chgpth_base + USBIN_CHGR_CFG,
-					0xFF, USBIN_ADAPTER_5V);
+	rc = smbchg_sec_masked_write(chip,
+				chip->usb_chgpth_base + USBIN_CHGR_CFG,
+				0xFF, USBIN_ADAPTER_5V);
 	else
-		rc = smbchg_sec_masked_write(chip,
-					chip->usb_chgpth_base + USBIN_CHGR_CFG,
-					0xFF, USBIN_ADAPTER_9V);
+	rc = smbchg_sec_masked_write(chip,
+				chip->usb_chgpth_base + USBIN_CHGR_CFG,
+				0xFF, USBIN_ADAPTER_9V);
 	if (rc < 0) {
 		dev_err(chip->dev, "Couldn't write usb allowance rc=%d\n", rc);
 		return rc;
@@ -3645,13 +3644,13 @@ static int smbchg_external_otg_regulator_disable(struct regulator_dev *rdev)
 	 * input.
 	 */
 	if (chip->only_allow_5v)
-		rc = smbchg_sec_masked_write(chip,
-					chip->usb_chgpth_base + CHGPTH_CFG,
-					HVDCP_EN_BIT, 0);
+	rc = smbchg_sec_masked_write(chip,
+				chip->usb_chgpth_base + CHGPTH_CFG,
+				HVDCP_EN_BIT, 0);
 	else
-		rc = smbchg_sec_masked_write(chip,
-					chip->usb_chgpth_base + CHGPTH_CFG,
-					HVDCP_EN_BIT, HVDCP_EN_BIT);
+	rc = smbchg_sec_masked_write(chip,
+				chip->usb_chgpth_base + CHGPTH_CFG,
+				HVDCP_EN_BIT, HVDCP_EN_BIT);
 	if (rc < 0) {
 		dev_err(chip->dev, "Couldn't enable HVDCP rc=%d\n", rc);
 		return rc;
@@ -4408,9 +4407,9 @@ static void restore_from_hvdcp_detection(struct smbchg_chip *chip)
 
 	/* enable HVDCP */
 	if (!chip->only_allow_5v)
-		rc = smbchg_sec_masked_write(chip,
-					chip->usb_chgpth_base + CHGPTH_CFG,
-					HVDCP_EN_BIT, HVDCP_EN_BIT);
+	rc = smbchg_sec_masked_write(chip,
+				chip->usb_chgpth_base + CHGPTH_CFG,
+				HVDCP_EN_BIT, HVDCP_EN_BIT);
 	if (rc < 0)
 		pr_err("Couldn't enable HVDCP rc=%d\n", rc);
 
@@ -4423,13 +4422,13 @@ static void restore_from_hvdcp_detection(struct smbchg_chip *chip)
 
 	/* allow 5 to 9V chargers */
 	if (chip->only_allow_5v)
-		rc = smbchg_sec_masked_write(chip,
-				chip->usb_chgpth_base + USBIN_CHGR_CFG,
-				ADAPTER_ALLOWANCE_MASK, USBIN_ADAPTER_5V);
+	rc = smbchg_sec_masked_write(chip,
+			chip->usb_chgpth_base + USBIN_CHGR_CFG,
+			ADAPTER_ALLOWANCE_MASK, USBIN_ADAPTER_5V);
 	else
-		rc = smbchg_sec_masked_write(chip,
-				chip->usb_chgpth_base + USBIN_CHGR_CFG,
-				ADAPTER_ALLOWANCE_MASK, USBIN_ADAPTER_5V_9V_CONT);
+	rc = smbchg_sec_masked_write(chip,
+			chip->usb_chgpth_base + USBIN_CHGR_CFG,
+			ADAPTER_ALLOWANCE_MASK, USBIN_ADAPTER_5V_9V_CONT);
 	if (rc < 0)
 		pr_err("Couldn't write usb allowance rc=%d\n", rc);
 
@@ -4496,6 +4495,8 @@ static void handle_usb_removal(struct smbchg_chip *chip)
 	/* Clear the OV detected status set before */
 	if (chip->usb_ov_det)
 		chip->usb_ov_det = false;
+	/* cancel/wait for hvdcp pending work if any */
+	cancel_delayed_work_sync(&chip->hvdcp_det_work);
 	smbchg_change_usb_supply_type(chip, POWER_SUPPLY_TYPE_UNKNOWN);
 	if (!chip->skip_usb_notification) {
 		pr_smb(PR_MISC, "setting usb psy present = %d\n",
@@ -5311,6 +5312,10 @@ static int smbchg_prepare_for_pulsing_lite(struct smbchg_chip *chip)
 out:
 	chip->hvdcp_3_det_ignore_uv = false;
 	restore_from_hvdcp_detection(chip);
+	if (!is_src_detect_high(chip)) {
+		pr_smb(PR_MISC, "HVDCP removed - force removal\n");
+		update_usb_status(chip, 0, true);
+	}
 	return rc;
 }
 
@@ -5330,6 +5335,10 @@ static int smbchg_unprepare_for_pulsing_lite(struct smbchg_chip *chip)
 	if (rc < 0)
 		pr_err("Couldn't retract HVDCP ICL vote rc=%d\n", rc);
 
+	if (!is_src_detect_high(chip)) {
+		pr_smb(PR_MISC, "HVDCP removed\n");
+		update_usb_status(chip, 0, 0);
+	}
 	/* This could be because allow_hvdcp3 set to false runtime */
 	if (is_usb_present(chip) && !chip->allow_hvdcp3_detection)
 		smbchg_handle_hvdcp3_disable(chip);
@@ -5574,8 +5583,8 @@ void runin_work(struct smbchg_chip *chip, int batt_capacity)
 			dev_err(chip->dev,
 				"Couldn't disenable charge rc=%d\n", rc);
 	} else {
-		if (batt_capacity <= 50) {
-		pr_debug("smbcharge_get_prop_batt_capacity <= 50\n");
+		if (batt_capacity <= 60) {
+		pr_debug("smbcharge_get_prop_batt_capacity <= 60\n");
 		rc = smbchg_usb_suspend(chip,false);
 		if (rc)
 			dev_err(chip->dev,
@@ -7258,6 +7267,7 @@ static int smb_parse_dt(struct smbchg_chip *chip)
 						"qcom,only-allow-5v");
 	chip->report_temp_by_d_work = of_property_read_bool(node,
 						"qcom,report-temp-by-d-work");
+
 	/* parse the battery missing detection pin source */
 	rc = of_property_read_string(chip->spmi->dev.of_node,
 		"qcom,bmd-pin-src", &bpd);

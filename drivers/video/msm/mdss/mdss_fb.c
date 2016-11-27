@@ -2,7 +2,7 @@
  * Core MDSS framebuffer driver.
  *
  * Copyright (C) 2007 Google Incorporated
- * Copyright (c) 2008-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2008-2016, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -52,6 +52,7 @@
 #include <linux/msm_iommu_domains.h>
 
 #include "mdss_fb.h"
+#include "mdss_mdp.h"
 #include "mdss_mdp_splash_logo.h"
 #define CREATE_TRACE_POINTS
 #include "mdss_debug.h"
@@ -623,8 +624,8 @@ static ssize_t mdss_fb_force_panel_dead(struct device *dev,
 		return len;
 	}
 
-	if (sscanf(buf, "%d", &pdata->panel_info.panel_force_dead) != 1)
-		pr_err("sccanf buf error!\n");
+	if (kstrtouint(buf, 0, &pdata->panel_info.panel_force_dead))
+		pr_err("kstrtouint buf error\n");
 
 	return len;
 }
@@ -737,8 +738,8 @@ static ssize_t mdss_fb_change_dfps_mode(struct device *dev,
 	}
 	pinfo = &pdata->panel_info;
 
-	if (sscanf(buf, "%d", &dfps_mode) != 1) {
-		pr_err("sccanf buf error!\n");
+	if (kstrtouint(buf, 0, &dfps_mode)) {
+		pr_err("kstrtouint buf error\n");
 		return len;
 	}
 
@@ -775,6 +776,68 @@ static ssize_t mdss_fb_get_dfps_mode(struct device *dev,
 	return ret;
 }
 
+static int pcc_r = 32768, pcc_g = 32768, pcc_b = 32768;
+static ssize_t mdss_get_rgb(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d %d %d\n", pcc_r, pcc_g, pcc_b);
+}
+
+/**
+ * simple color temperature interface using polynomial color correction
+ *
+ * input values are r/g/b adjustments from 0-32768 representing 0 -> 1
+ *
+ * example adjustment @ 3500K:
+ * 1.0000 / 0.5515 / 0.2520 = 32768 / 25828 / 17347
+ *
+ * reference chart:
+ * http://www.vendian.org/mncharity/dir3/blackbody/UnstableURLs/bbr_color.html
+ */
+static ssize_t mdss_set_rgb(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	uint32_t r = 0, g = 0, b = 0;
+	struct mdp_pcc_cfg_data pcc_cfg;
+	u32 copyback = 0;
+
+    if (count > 19)
+		return -EINVAL;
+
+	sscanf(buf, "%d %d %d", &r, &g, &b);
+
+	if (r < 0 || r > 32768)
+		return -EINVAL;
+	if (g < 0 || g > 32768)
+		return -EINVAL;
+	if (b < 0 || b > 32768)
+		return -EINVAL;
+
+	pr_info("%s: r=%d g=%d b=%d", __func__, r, g, b);
+
+	memset(&pcc_cfg, 0, sizeof(struct mdp_pcc_cfg_data));
+
+	pcc_cfg.block = MDP_LOGICAL_BLOCK_DISP_0;
+	if (r == 32768 && g == 32768 && b == 32768)
+		pcc_cfg.ops = MDP_PP_OPS_DISABLE;
+	else
+		pcc_cfg.ops = MDP_PP_OPS_ENABLE;
+	pcc_cfg.ops |= MDP_PP_OPS_WRITE;
+	pcc_cfg.r.r = r;
+	pcc_cfg.g.g = g;
+	pcc_cfg.b.b = b;
+
+	if (mdss_mdp_pcc_config(&pcc_cfg, &copyback) == 0) {
+		pcc_r = r;
+		pcc_g = g;
+		pcc_b = b;
+		return count;
+	}
+
+	return -EINVAL;
+}
+
 static DEVICE_ATTR(msm_fb_type, S_IRUGO, mdss_fb_get_type, NULL);
 static DEVICE_ATTR(msm_fb_split, S_IRUGO | S_IWUSR, mdss_fb_show_split,
 					mdss_fb_store_split);
@@ -791,6 +854,9 @@ static DEVICE_ATTR(msm_fb_panel_status, S_IRUGO | S_IWUSR,
 	mdss_fb_get_panel_status, mdss_fb_force_panel_dead);
 static DEVICE_ATTR(msm_fb_dfps_mode, S_IRUGO | S_IWUSR,
 	mdss_fb_get_dfps_mode, mdss_fb_change_dfps_mode);
+static DEVICE_ATTR(rgb, S_IRUGO | S_IWUSR | S_IWGRP,
+        mdss_get_rgb, mdss_set_rgb);
+
 static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_msm_fb_type.attr,
 	&dev_attr_msm_fb_split.attr,
@@ -802,6 +868,7 @@ static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_msm_fb_thermal_level.attr,
 	&dev_attr_msm_fb_panel_status.attr,
 	&dev_attr_msm_fb_dfps_mode.attr,
+	&dev_attr_rgb.attr,
 	NULL,
 };
 
@@ -1031,6 +1098,8 @@ static int mdss_fb_remove(struct platform_device *pdev)
 
 	if (mfd->key != MFD_KEY)
 		return -EINVAL;
+
+	mdss_panel_debugfs_cleanup(mfd->panel_info);
 
 	if (mdss_fb_suspend_sub(mfd))
 		pr_err("msm_fb_remove: can't stop the device %d\n",

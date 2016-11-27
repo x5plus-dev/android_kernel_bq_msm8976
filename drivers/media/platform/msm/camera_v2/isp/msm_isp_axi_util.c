@@ -67,7 +67,7 @@ int msm_isp_axi_create_stream(struct vfe_device *vfe_dev,
 	ISP_DBG("%s: vfe %d handle %x\n", __func__, vfe_dev->pdev->id,
 		stream_cfg_cmd->axi_stream_handle);
 
-pr_err("lok : msm_isp_axi_create_stream: stream_cfg_cmd->[session_id: %d stream_id: %d]\n",stream_cfg_cmd->session_id, stream_cfg_cmd->stream_id);
+	pr_err("lok : msm_isp_axi_create_stream: stream_cfg_cmd->[session_id: %d stream_id: %d]\n",stream_cfg_cmd->session_id, stream_cfg_cmd->stream_id);
 	memset(&axi_data->stream_info[i], 0,
 		   sizeof(struct msm_vfe_axi_stream));
 	spin_lock_init(&axi_data->stream_info[i].lock);
@@ -211,7 +211,6 @@ int msm_isp_validate_axi_request(struct msm_vfe_axi_shared_data *axi_data,
 
 	for (i = 0; i < stream_info->num_planes; i++) {
 		stream_info->plane_cfg[i] = stream_cfg_cmd->plane_cfg[i];
-		//pr_err("%s stream id %d plane[%d].offset 0x%x\n", __func__, stream_info->stream_id, i, stream_info->plane_cfg[i].plane_addr_offset);
 		stream_info->max_width = max(stream_info->max_width,
 			stream_cfg_cmd->plane_cfg[i].output_width);
 	}
@@ -1268,7 +1267,6 @@ static void msm_isp_update_ping_pong_offset(struct vfe_device *vfe_dev,
 {
 	int j;
 	uint32_t pingpong_bit;
-//	int32_t buf_size_byte = 0;
 	int32_t word_per_line = 0;
 	uint32_t pingpong_status;
 	struct msm_isp_buffer *buf = NULL;
@@ -1292,13 +1290,7 @@ static void msm_isp_update_ping_pong_offset(struct vfe_device *vfe_dev,
 			if (word_per_line < 0) {
 				/* 0 means no prefetch*/
 				word_per_line = 0;
-				//buf_size_byte = 0;
-			} /*else {
-				buf_size_byte = (word_per_line * 8 *
-					stream_info->plane_cfg[j].
-					output_scan_lines) - stream_info->
-					plane_cfg[j].plane_addr_offset;
-			}*/
+			}
          pr_err("%s: VFE id %d paddr:0x%p plane_addr_offset:0x%x\n",__func__,vfe_dev->pdev->id,(void*)buf->mapped_info[j].paddr,stream_info->plane_cfg[j].plane_addr_offset);
 
 			vfe_dev->hw_info->vfe_ops.axi_ops.update_ping_pong_addr(
@@ -1317,7 +1309,6 @@ static void msm_isp_reload_ping_pong_offset(struct vfe_device *vfe_dev,
 	struct msm_isp_buffer *buf;
 	uint32_t pingpong_status;
 	uint32_t pingpong_bit = 0;
-//	pr_err("%s: VFE id %d stream_id 0x%x  sw_ping_pong_bit before :%d\n",__func__,vfe_dev->pdev->id,stream_info->stream_id,stream_info->sw_ping_pong_bit);
 	for (i = 0; i < 2; i++) {
 		buf = stream_info->buf[i];
 		if (!buf)
@@ -1338,10 +1329,6 @@ static void msm_isp_reload_ping_pong_offset(struct vfe_device *vfe_dev,
 				}
 		}
 	}
-//	if (stream_info->controllable_output) {
-//		stream_info->sw_ping_pong_bit ^= 1;
- //	pr_err("%s:VFE id %d stream_id 0x%x sw_ping_pong_bit after :%d\n",__func__,vfe_dev->pdev->id,stream_info->stream_id,stream_info->sw_ping_pong_bit);
-//		}
 }
 
 void msm_isp_axi_cfg_update_pending(struct vfe_device *vfe_dev,
@@ -1457,7 +1444,6 @@ static void msm_isp_get_done_buf(struct vfe_device *vfe_dev,
 	}
 
 	if (stream_info->controllable_output) {
-
 		stream_info->buf[pingpong_bit] = NULL;
 		if (!stream_info->undelivered_request_cnt) {
 			pr_err_ratelimited("%s:%d error undelivered_request_cnt 0\n",
@@ -1465,12 +1451,10 @@ static void msm_isp_get_done_buf(struct vfe_device *vfe_dev,
 		} else {
 			stream_info->undelivered_request_cnt--;
 			if (pingpong_bit != stream_info->sw_ping_pong_bit) {
-//				pr_err("%s:%d ping pong bit actual %d sw %d\n",
 				pr_err("%s:%d ping pong bit actual %d sw %d  frame_id:%d reg_update_frame_id:%d \n",
 				__func__, __LINE__, pingpong_bit,
 				stream_info->sw_ping_pong_bit,vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id,
-                       vfe_dev->axi_data.src_info[VFE_PIX_0].reg_update_frame_id);
-//				stream_info->sw_ping_pong_bit);
+				vfe_dev->axi_data.src_info[VFE_PIX_0].reg_update_frame_id);
 				error_event.frame_id =
 					vfe_dev->axi_data.src_info[VFE_PIX_0].
 						frame_id;
@@ -1478,7 +1462,6 @@ static void msm_isp_get_done_buf(struct vfe_device *vfe_dev,
 					ISP_EVENT_IOMMU_P_FAULT, &error_event);
 			}
 		stream_info->sw_ping_pong_bit ^= 1;
-
 		}
 	}
 }
@@ -1894,7 +1877,6 @@ static void msm_isp_process_done_buf(struct vfe_device *vfe_dev,
 			ISP_DBG("%s: vfe_id %d send buf done buf-id %d bufq %x\n",
 				__func__, vfe_dev->pdev->id, buf->buf_idx,
 				buf->bufq_handle);
-
 			msm_isp_send_event(vfe_dev, ISP_EVENT_BUF_DONE,
 				&buf_event);
 			vfe_dev->buf_mgr->ops->buf_done(vfe_dev->buf_mgr,
@@ -2778,7 +2760,6 @@ static int msm_isp_stop_axi_stream(struct vfe_device *vfe_dev,
 		stream_info->state = STOP_PENDING;
 		pr_debug("%s, Stream 0x%x,\n", __func__,
 			stream_info->stream_id);
-
 		if (stream_info->stream_src == CAMIF_RAW ||
 			stream_info->stream_src == IDEAL_RAW) {
 			/* We dont get reg update IRQ for raw snapshot
@@ -3196,7 +3177,7 @@ static int msm_isp_request_frame(struct vfe_device *vfe_dev,
 			return rc;
 		}
 	}
-    if(vfe_dev->pdev->id == 1 )
+	if(vfe_dev->pdev->id == 1 )
     	{
     	pingpong_bit = (~(pingpong_status >>
 			stream_info->wm[0]) & 0x1);
@@ -3357,11 +3338,8 @@ int msm_isp_update_axi_stream(struct vfe_device *vfe_dev, void *arg)
 			for (j = 0; j < stream_info->num_planes; j++) {
 				stream_info->plane_cfg[j] =
 					update_info->plane_cfg[j];
-				//pr_err("%s stream id %d plane[%d].offset 0x%x\n", __func__, stream_info->stream_id, j, stream_info->plane_cfg[j].plane_addr_offset);
-
 			}
 			stream_info->output_format = update_info->output_format;
-//			if (stream_info->state == ACTIVE) {
 			if ((stream_info->state == ACTIVE) &&
 				(vfe_dev->is_split == 1)) {
 				if (vfe_dev->hw_info->runtime_axi_update == 0) {
@@ -3401,22 +3379,7 @@ int msm_isp_update_axi_stream(struct vfe_device *vfe_dev, void *arg)
 							vfe_stream_info->runtime_output_format =
 								vfe_stream_info->output_format;
 						else
-#if 1
 							vfe_stream_info->state = UPDATE_PENDING;
-#endif
-#if 0 /*Lokesh/Shilpa: changes */
-						if(vfe_id == ISP_VFE1) {
-								/*AXI offset for VFE1*/
-								msm_isp_update_ping_pong_offset(
-								vfe_temp_dev, stream_info);
-								/*Resume AXI*/
-								stream_info->state = RESUMING;
-								atomic_set(&vfe_dev->axi_data.
-									axi_cfg_update[SRC_TO_INTF(
-									stream_info->stream_src)],
-									APPLYING_UPDATE_RESUME);
-						}
-#endif
 						pr_err("%s vfe_id %d stream id %x frame_id %d\n",
 							__func__, vfe_dev->pdev->id, stream_info
 							->stream_id, vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id);
